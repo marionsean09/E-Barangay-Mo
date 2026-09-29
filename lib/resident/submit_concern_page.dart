@@ -1,10 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/resident/request_options.dart';
 import 'package:e_barangay_mo/theme/app_colors.dart';
 import 'package:e_barangay_mo/theme/app_tokens.dart';
@@ -121,24 +120,12 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
     if (picked != null) setState(() => requestedDate = picked);
   }
 
-  Future<String> uploadPhoto(Uint8List bytes, String name) async {
-    final extension = imageExtension(bytes);
-    final uploaded = await AppwriteService.storage.createFile(
-      bucketId: AppwriteService.requirementsBucketId,
-      fileId: ID.unique(),
-      file: InputFile.fromBytes(
-        bytes: bytes,
-        filename: '$name.$extension',
-        contentType: 'image/${extension == 'jpg' ? 'jpeg' : extension}',
-      ),
-    );
-    return uploaded.$id;
-  }
+  UploadFile photoFile(Uint8List bytes, String name) =>
+      (bytes: bytes, filename: '$name.${imageExtension(bytes)}');
 
+  // The checks below give quick feedback; the server validates everything
+  // again (types, lengths, dates, real image bytes) before saving.
   void submit() async {
-    final String concernTitle;
-    final String concernDescription;
-
     if (isRequest) {
       final missing = requirementLabels.keys
           .where((key) => !requirementPreviews.containsKey(key))
@@ -151,8 +138,6 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
         showMessage("Please enter the purpose of your request");
         return;
       }
-      concernTitle = requestType;
-      concernDescription = purpose.text.trim();
     } else if (isBlotter) {
       if (description.text.trim().isEmpty) {
         showMessage("Please write the reason for the blotter report");
@@ -162,59 +147,44 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
         showMessage("Please choose your requested date");
         return;
       }
-      concernTitle = "Blotter: $blotterCategory";
-      concernDescription = description.text.trim();
     } else {
       if (title.text.trim().isEmpty || description.text.trim().isEmpty) {
         showMessage("Please fill in the title and description");
         return;
       }
-      concernTitle = title.text.trim();
-      concernDescription = description.text.trim();
     }
 
     setState(() => isSubmitting = true);
 
     try {
-      final user = await AppwriteService.account.get();
-
-      final Map<String, String> fileIds = {};
-      if (isRequest) {
-        for (final key in requirementLabels.keys) {
-          fileIds[key] = await uploadPhoto(requirementPreviews[key]!, key);
-        }
-      }
-
-      final List<String> evidenceIds = [];
-      if (isBlotter) {
-        for (var i = 0; i < blotterPhotos.length; i++) {
-          evidenceIds.add(await uploadPhoto(blotterPhotos[i], 'blotter-${i + 1}'));
-        }
-      }
-
-      await AppwriteService.tablesDB.createRow(
-        databaseId: AppwriteService.databaseId,
-        tableId: AppwriteService.concernsTableId,
-        rowId: ID.unique(),
-        data: {
-          'userId': user.$id,
-          'title': concernTitle,
-          'description': concernDescription,
+      // One multipart request: the server saves the concern and its
+      // photos in a single transaction. The owner and status are set by the
+      // server, not sent from here.
+      await ApiService.submitConcern(
+        fields: {
           'type': type,
-          'status': 'Pending',
           if (isRequest) ...{
-            'requestType': requestType,
+            'request_type': requestType,
             'purpose': purpose.text.trim(),
-            ...fileIds,
-          },
-          if (isBlotter) ...{
-            'requestedDate': DateTime(requestedDate!.year,
-                    requestedDate!.month, requestedDate!.day, 12)
-                .toUtc()
-                .toIso8601String(),
-            if (evidenceIds.isNotEmpty) 'evidence': evidenceIds,
+          } else if (isBlotter) ...{
+            'blotter_category': blotterCategory,
+            'description': description.text.trim(),
+            'requested_date': apiDate(requestedDate!),
+          } else ...{
+            'title': title.text.trim(),
+            'description': description.text.trim(),
           },
         },
+        files: {
+          if (isRequest)
+            for (final key in requirementLabels.keys)
+              key: photoFile(requirementPreviews[key]!, key),
+        },
+        evidence: [
+          if (isBlotter)
+            for (var i = 0; i < blotterPhotos.length; i++)
+              photoFile(blotterPhotos[i], 'blotter-${i + 1}'),
+        ],
       );
 
       if (!mounted) return;
@@ -226,9 +196,9 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
             : "Report sent to the barangay.",
       );
       Navigator.pop(context, true);
-    } on AppwriteException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
-      showMessage(e.message ?? "Submit failed");
+      showMessage(e.message);
     } finally {
       if (mounted) setState(() => isSubmitting = false);
     }

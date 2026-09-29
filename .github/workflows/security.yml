@@ -1,0 +1,58 @@
+# Bonus hardening (3.5-D): automated dependency scanning + security tests on
+# every push and pull request, and weekly for newly published advisories.
+name: security
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 1 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_sqlite, fileinfo
+      - run: composer install --no-interaction --prefer-dist
+      - name: Dependency scan (composer audit)
+        run: composer audit
+      - name: Security test suite
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency scan (OSV-Scanner on pubspec.lock)
+        uses: google/osv-scanner-action/osv-scanner-action@v2.0.2
+        with:
+          scan-args: --lockfile=pubspec.lock
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan of full git history (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

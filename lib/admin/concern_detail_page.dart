@@ -1,12 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
-import 'package:appwrite/models.dart' as models;
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
 
 import 'package:e_barangay_mo/resident/request_options.dart';
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/models/concern.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/theme/app_colors.dart';
 import 'package:e_barangay_mo/theme/app_tokens.dart';
 import 'package:e_barangay_mo/utils/concern_format.dart';
@@ -17,7 +16,7 @@ import 'package:e_barangay_mo/widgets/status_pill.dart';
 class ConcernDetailPage extends StatefulWidget {
   const ConcernDetailPage({super.key, required this.row});
 
-  final models.Row row;
+  final Concern row;
 
   @override
   State<ConcernDetailPage> createState() => _ConcernDetailPageState();
@@ -25,7 +24,8 @@ class ConcernDetailPage extends StatefulWidget {
 
 class _ConcernDetailPageState extends State<ConcernDetailPage> {
   late Map<String, dynamic> data = Map.of(widget.row.data);
-  String? requesterName;
+  String? get requesterName =>
+      (data['requester'] as Map?)?['fullName'] as String?;
   bool isSaving = false;
   bool changed = false;
 
@@ -34,58 +34,38 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
   DateTime? get requestedDate => parseDate(data['requestedDate']);
   DateTime? get finalDate => parseDate(data['finalDate']);
 
-  List<(String, String?)> get photos {
+  List<(String, int?)> get photos {
     if (isRequest) {
       return [
         for (final entry in requirementLabels.entries)
-          (entry.value, data[entry.key] as String?),
+          (entry.value, data[entry.key] as int?),
       ];
     }
-    final evidence = (data['evidence'] as List?)?.cast<String>() ?? [];
+    final evidence = (data['evidence'] as List?)?.cast<int>() ?? [];
     return [
       for (var i = 0; i < evidence.length; i++) ("Photo ${i + 1}", evidence[i]),
     ];
   }
   DateTime? get claimDate => parseDate(data['claimDate']);
 
-  @override
-  void initState() {
-    super.initState();
-    loadRequester();
-  }
-
-  Future<void> loadRequester() async {
-    try {
-      final profile = await AppwriteService.tablesDB.getRow(
-        databaseId: AppwriteService.databaseId,
-        tableId: AppwriteService.usersTableId,
-        rowId: data['userId'],
-      );
-      if (mounted) setState(() => requesterName = profile.data['fullName']);
-    } on AppwriteException {
-    }
-  }
-
+  /// [update] keys: status, final_date, claim_date. The server validates
+  /// them, records who changed what in the audit log, and returns the
+  /// saved concern, which replaces the local copy.
   Future<void> save(Map<String, dynamic> update, String message) async {
     setState(() => isSaving = true);
     try {
-      await AppwriteService.tablesDB.updateRow(
-        databaseId: AppwriteService.databaseId,
-        tableId: AppwriteService.concernsTableId,
-        rowId: widget.row.$id,
-        data: update,
-      );
+      final saved = await ApiService.updateConcern(widget.row.id, update);
       if (!mounted) return;
       setState(() {
-        data.addAll(update);
+        data = Map.of(saved.data);
         changed = true;
       });
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
-    } on AppwriteException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? "Could not save.")));
+          SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => isSaving = false);
     }
@@ -104,19 +84,14 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
     );
     if (picked == null) return;
 
-    final value = DateTime(picked.year, picked.month, picked.day, 12)
-        .toUtc()
-        .toIso8601String();
     await save(
-      {'claimDate': value, 'status': 'Resolved'},
+      {'claim_date': apiDate(picked), 'status': 'Resolved'},
       "Claiming date set to ${formatLongDate(picked)}",
     );
   }
 
   Future<void> setFinalDate(DateTime day, String message) async {
-    final value =
-        DateTime(day.year, day.month, day.day, 12).toUtc().toIso8601String();
-    await save({'finalDate': value, 'status': 'In Progress'}, message);
+    await save({'final_date': apiDate(day), 'status': 'In Progress'}, message);
   }
 
   Future<void> pickFinalDate() async {
@@ -144,7 +119,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
     final c = context.colors;
     final text = Theme.of(context).textTheme;
     final String status = data['status'] ?? 'Pending';
-    final filed = parseDate(widget.row.$createdAt) ?? DateTime.now();
+    final filed = parseDate(widget.row.createdAt) ?? DateTime.now();
 
     return PopScope(
       canPop: false,
@@ -436,7 +411,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                 OutlinedButton(
                   onPressed: isSaving
                       ? null
-                      : () => save({'claimDate': null}, "Claiming date cleared"),
+                      : () => save({'claim_date': null}, "Claiming date cleared"),
                   child: const Text("Clear"),
                 ),
             ],
@@ -451,7 +426,7 @@ class _RequirementPhoto extends StatefulWidget {
   const _RequirementPhoto({required this.label, required this.fileId});
 
   final String label;
-  final String? fileId;
+  final int? fileId;
 
   @override
   State<_RequirementPhoto> createState() => _RequirementPhotoState();
@@ -460,7 +435,7 @@ class _RequirementPhoto extends StatefulWidget {
 class _RequirementPhotoState extends State<_RequirementPhoto> {
   Future<Uint8List>? bytes;
 
-  bool get hasFile => (widget.fileId ?? '').isNotEmpty;
+  bool get hasFile => widget.fileId != null;
 
   @override
   void initState() {
@@ -471,12 +446,9 @@ class _RequirementPhotoState extends State<_RequirementPhoto> {
   void load() {
     if (!hasFile) return;
     setState(() {
-      bytes = AppwriteService.storage
-          .getFileView(
-            bucketId: AppwriteService.requirementsBucketId,
-            fileId: widget.fileId!,
-          )
-          .catchError((Object e) {
+      // Streamed through the API, which checks the viewer is the owner
+      // or an admin, decrypts the file and verifies its checksum.
+      bytes = ApiService.attachment(widget.fileId!).catchError((Object e) {
         debugPrint('Requirement photo ${widget.fileId} failed: $e');
         throw e;
       });
@@ -484,16 +456,10 @@ class _RequirementPhotoState extends State<_RequirementPhoto> {
   }
 
   String reason(Object? error) {
-    if (error is AppwriteException) {
-      if (error.code == 401 || error.type == 'user_unauthorized') {
-        return "No permission. Give the admin Read on the bucket.";
-      }
-      if (error.code == 404) {
-        return error.type == 'storage_bucket_not_found'
-            ? "Bucket not found. Check the bucket ID."
-            : "Photo was deleted from Storage.";
-      }
-      return error.message ?? "Could not load";
+    if (error is ApiException) {
+      if (error.statusCode == 403) return "You don't have access to this file.";
+      if (error.statusCode == 404) return "Photo not found.";
+      return error.message;
     }
     return "Could not load. Check the connection.";
   }

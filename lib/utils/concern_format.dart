@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:appwrite/models.dart' as models;
+import 'package:e_barangay_mo/models/concern.dart';
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
 
 const concernStatuses = ['Pending', 'In Progress', 'Resolved', 'Rejected'];
@@ -30,12 +30,16 @@ String formatDate(DateTime date) =>
 String formatLongDate(DateTime date) =>
     '${_weekdays[date.weekday - 1]}, ${formatDate(date)}';
 
-String referenceFor(models.Row row) {
+/// Calendar date in the format the API expects: yyyy-MM-dd.
+String apiDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+String referenceFor(Concern row) {
   final data = row.data;
   final key = data['type'] == 'Request' ? data['requestType'] : data['type'];
   final prefix = _referencePrefixes[key] ?? 'EB';
-  final year = parseDate(row.$createdAt)?.year ?? DateTime.now().year;
-  return '$prefix-$year-${row.$sequence.padLeft(4, '0')}';
+  final year = parseDate(row.createdAt)?.year ?? DateTime.now().year;
+  return '$prefix-$year-${row.id.toString().padLeft(4, '0')}';
 }
 
 String statusLabel(Map<String, dynamic> data) {

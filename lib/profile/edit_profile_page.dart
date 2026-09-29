@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
-import 'package:appwrite/models.dart' as models;
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
 
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/models/app_user.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/theme/app_colors.dart';
 import 'package:e_barangay_mo/theme/app_tokens.dart';
 import 'package:e_barangay_mo/utils/concern_format.dart';
@@ -13,7 +12,7 @@ import 'package:e_barangay_mo/widgets/press_scale.dart';
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key, required this.user});
 
-  final models.User user;
+  final AppUser user;
 
   @override
   State<EditProfilePage> createState() => _EditProfilePageState();
@@ -25,7 +24,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final currentPassword = TextEditingController();
   final newPassword = TextEditingController();
 
-  late models.User user = widget.user;
+  late AppUser user = widget.user;
   bool isSaving = false;
   String? error;
 
@@ -57,6 +56,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       setState(() => error = "Your new password needs at least 8 characters.");
       return;
     }
+    // The server re-checks all of this; these checks just give quick feedback.
 
     setState(() {
       isSaving = true;
@@ -64,38 +64,20 @@ class _EditProfilePageState extends State<EditProfilePage> {
     });
 
     try {
-      if (name != user.name) {
-        user = await AppwriteService.account.updateName(name: name);
-        try {
-          await AppwriteService.tablesDB.updateRow(
-            databaseId: AppwriteService.databaseId,
-            tableId: AppwriteService.usersTableId,
-            rowId: user.$id,
-            data: {'fullName': name},
-          );
-        } on AppwriteException {
-        }
-      }
-      if (emailChanged) {
-        user = await AppwriteService.account.updateEmail(
-          email: newEmail,
-          password: currentPassword.text,
-        );
-      }
-      if (passwordChanged) {
-        user = await AppwriteService.account.updatePassword(
-          password: newPassword.text,
-          oldPassword: currentPassword.text,
-        );
-      }
+      user = await ApiService.updateProfile(
+        fullName: name,
+        email: newEmail,
+        currentPassword: currentPassword.text,
+        newPassword: newPassword.text,
+      );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text("Profile saved")));
       Navigator.pop(context, user);
-    } on AppwriteException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => error = e.message ?? "Could not save your profile.");
+      setState(() => error = e.message);
     } finally {
       if (mounted) setState(() => isSaving = false);
     }
@@ -140,7 +122,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           Text(user.name.isNotEmpty ? user.name : "No name yet",
                               style: text.titleLarge),
                           Text(
-                            "Member since ${formatDate(parseDate(user.$createdAt) ?? DateTime.now())}",
+                            "Member since ${formatDate(parseDate(user.createdAt) ?? DateTime.now())}",
                             style: text.bodySmall,
                           ),
                         ],

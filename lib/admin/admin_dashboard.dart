@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
-import 'package:appwrite/models.dart' as models;
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
 
 import 'package:e_barangay_mo/admin/concern_detail_page.dart';
 import 'package:e_barangay_mo/profile/profile_menu.dart';
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/models/app_user.dart';
+import 'package:e_barangay_mo/models/concern.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/theme/app_colors.dart';
 import 'package:e_barangay_mo/theme/app_tokens.dart';
 import 'package:e_barangay_mo/utils/concern_format.dart';
@@ -19,67 +19,54 @@ import 'package:e_barangay_mo/widgets/status_pill.dart';
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key, required this.user});
 
-  final models.User user;
+  final AppUser user;
 
   @override
   State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
 class _AdminDashboardState extends State<AdminDashboard> {
-  late models.User user = widget.user;
-  List<models.Row> concerns = [];
+  late AppUser user = widget.user;
+  List<Concern> concerns = [];
   bool isLoading = true;
   String? loadError;
   String filter = 'All';
-  RealtimeSubscription? subscription;
-  StreamSubscription? listener;
+  Timer? poller;
 
   @override
   void initState() {
     super.initState();
     loadConcerns();
-
-    subscription = AppwriteService.realtime.subscribe([
-      Channel.tablesdb(AppwriteService.databaseId)
-          .table(AppwriteService.concernsTableId)
-          .row(),
-    ]);
-    listener = subscription!.stream.listen((_) => loadConcerns());
+    // Picks up new submissions from residents.
+    poller = Timer.periodic(const Duration(seconds: 30), (_) => loadConcerns());
   }
 
   @override
   void dispose() {
-    listener?.cancel();
-    subscription?.close();
+    poller?.cancel();
     super.dispose();
   }
 
   Future<void> loadConcerns() async {
     try {
-      final result = await AppwriteService.tablesDB.listRows(
-        databaseId: AppwriteService.databaseId,
-        tableId: AppwriteService.concernsTableId,
-        queries: [
-          Query.orderDesc('\$createdAt'),
-          Query.limit(100),
-        ],
-      );
+      // Admin-only endpoint: a resident's token gets 403 here.
+      final result = await ApiService.allConcerns();
       if (!mounted) return;
       setState(() {
-        concerns = result.rows;
+        concerns = result;
         isLoading = false;
         loadError = null;
       });
-    } on AppwriteException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         isLoading = false;
-        loadError = e.message ?? "Could not load concerns.";
+        loadError = e.message;
       });
     }
   }
 
-  Future<void> openDetail(models.Row row) async {
+  Future<void> openDetail(Concern row) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => ConcernDetailPage(row: row)),
@@ -209,7 +196,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  List<Widget> _list(List<models.Row> rows) {
+  List<Widget> _list(List<Concern> rows) {
     final c = context.colors;
     final text = Theme.of(context).textTheme;
 
@@ -267,7 +254,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           icon: typeIcon(row.data['type']),
           title: row.data['title'] ?? '',
           meta:
-              "Ref. ${referenceFor(row)}, filed ${formatDate(parseDate(row.$createdAt) ?? DateTime.now())}",
+              "Ref. ${referenceFor(row)}, filed ${formatDate(parseDate(row.createdAt) ?? DateTime.now())}",
           status: row.data['status'] ?? 'Pending',
           statusLabel: statusLabel(row.data),
           note: _note(row.data),

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:appwrite/appwrite.dart';
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/auth/auth_gate.dart';
 
 import 'package:e_barangay_mo/auth/signup_page.dart';
@@ -30,22 +29,17 @@ class _LoginPageState extends State<LoginPage> {
     try {
       setState(() => isLoading = true);
 
-      try {
-        await AppwriteService.account.deleteSession(sessionId: 'current');
-      } on AppwriteException {
-      }
-
-      await AppwriteService.account.createEmailPasswordSession(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
+      await ApiService.login(
+        emailController.text.trim(),
+        passwordController.text,
       );
 
       if (!mounted) return;
       goToAuthGate(context);
-    } on AppwriteException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? "Login failed")),
+        SnackBar(content: Text(e.message)),
       );
     } finally {
       if (mounted) setState(() => isLoading = false);

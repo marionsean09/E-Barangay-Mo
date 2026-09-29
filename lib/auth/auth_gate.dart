@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
-import 'package:appwrite/models.dart' as models;
-
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/models/app_user.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/auth/login_page.dart';
 import 'package:e_barangay_mo/resident/resident_dashboard.dart';
 import 'package:e_barangay_mo/admin/admin_dashboard.dart';
@@ -22,19 +20,12 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  late final Future<models.User?> _userFuture = _getUser();
-
-  Future<models.User?> _getUser() async {
-    try {
-      return await AppwriteService.account.get();
-    } on AppwriteException {
-      return null;
-    }
-  }
+  // Uses the httpOnly refresh cookie to get a fresh access token.
+  late final Future<AppUser?> _userFuture = ApiService.restoreSession();
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<models.User?>(
+    return FutureBuilder<AppUser?>(
       future: _userFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -48,7 +39,8 @@ class _AuthGateState extends State<AuthGate> {
           return const LoginPage();
         }
 
-        if (user.labels.contains('admin')) {
+        // UI routing only; admin endpoints are protected on the server.
+        if (user.isAdmin) {
           return AdminDashboard(user: user);
         }
         return ResidentDashboard(user: user);

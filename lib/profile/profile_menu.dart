@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:appwrite/models.dart' as models;
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
 
 import 'package:e_barangay_mo/auth/auth_gate.dart';
 import 'package:e_barangay_mo/profile/edit_profile_page.dart';
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/models/app_user.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/theme/app_colors.dart';
 import 'package:e_barangay_mo/theme/app_tokens.dart';
 import 'package:e_barangay_mo/utils/concern_format.dart';
@@ -12,17 +12,22 @@ import 'package:e_barangay_mo/utils/concern_format.dart';
 class ProfileMenu extends StatelessWidget {
   const ProfileMenu({super.key, required this.user, this.onProfileChanged});
 
-  final models.User user;
+  final AppUser user;
 
-  final ValueChanged<models.User>? onProfileChanged;
+  final ValueChanged<AppUser>? onProfileChanged;
 
   Future<void> _logOut(BuildContext context) async {
-    await AppwriteService.account.deleteSession(sessionId: 'current');
+    // Revokes the refresh token on the server and clears the cookie.
+    try {
+      await ApiService.logout();
+    } on Exception {
+      // Signed out locally either way.
+    }
     if (context.mounted) goToAuthGate(context);
   }
 
   Future<void> _editProfile(BuildContext context) async {
-    final updated = await Navigator.push<models.User>(
+    final updated = await Navigator.push<AppUser>(
       context,
       MaterialPageRoute(builder: (_) => EditProfilePage(user: user)),
     );

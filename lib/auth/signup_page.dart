@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:appwrite/appwrite.dart';
 import 'package:e_barangay_mo/theme/phosphor_icons.dart';
-import 'package:e_barangay_mo/services/appwrite_service.dart';
+import 'package:e_barangay_mo/services/api_service.dart';
 import 'package:e_barangay_mo/auth/auth_gate.dart';
 import 'package:e_barangay_mo/theme/app_colors.dart';
 import 'package:e_barangay_mo/theme/app_tokens.dart';
@@ -27,36 +26,21 @@ class _SignupPageState extends State<SignupPage> {
     try {
       setState(() => isLoading = true);
 
-      final user = await AppwriteService.account.create(
-        userId: ID.unique(),
+      // One request: the server creates the account (always as a
+      // resident) and logs the user in.
+      await ApiService.register(
+        fullName: fullName.text.trim(),
         email: email.text.trim(),
-        password: password.text.trim(),
-        name: fullName.text.trim(),
-      );
-
-      await AppwriteService.account.createEmailPasswordSession(
-        email: email.text.trim(),
-        password: password.text.trim(),
-      );
-
-      await AppwriteService.tablesDB.createRow(
-        databaseId: AppwriteService.databaseId,
-        tableId: AppwriteService.usersTableId,
-        rowId: user.$id,
-        data: {
-          'fullName': fullName.text.trim(),
-          'email': email.text.trim(),
-          'role': 'resident',
-        },
+        password: password.text,
       );
 
       if (!mounted) return;
       goToAuthGate(context);
-    } on AppwriteException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message ?? "Sign up failed")));
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -114,7 +98,7 @@ class _SignupPageState extends State<SignupPage> {
                     obscureText: true,
                     decoration: const InputDecoration(
                       labelText: "Password",
-                      helperText: "At least 8 characters",
+                      helperText: "At least 8 characters, with letters and numbers",
                       prefixIcon: Icon(PhosphorIconsRegular.lock),
                     ),
                   ),
