@@ -4,6 +4,8 @@ use App\Http\Controllers\Admin\ConcernController as AdminConcernController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConcernController;
+use App\Http\Controllers\ConcernMessageController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Middleware\VerifyOrigin;
 use Illuminate\Support\Facades\Route;
@@ -38,6 +40,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // Owner or admin (checked by ConcernPolicy).
     Route::get('attachments/{attachment}', [AttachmentController::class, 'show']);
+    Route::get('concerns/{concern}/messages', [ConcernMessageController::class, 'index']);
+    Route::post('concerns/{concern}/messages', [ConcernMessageController::class, 'store'])->middleware('throttle:message');
+    Route::post('concerns/{concern}/messages/read', [ConcernMessageController::class, 'read']);
+    Route::get('notifications', [NotificationController::class, 'index']);
 
     // Admin only: enforced on the server, not just by hiding buttons.
     Route::middleware('role:admin')->prefix('admin')->group(function () {

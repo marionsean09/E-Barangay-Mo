@@ -113,13 +113,39 @@ class ConcernSecurityTest extends TestCase
             ->assertOk()
             ->assertJsonPath('concerns.0.requester.fullName', 'Test User');
 
-        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'In Progress'])
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'Resolved'])
             ->assertOk()
-            ->assertJsonPath('concern.status', 'In Progress');
+            ->assertJsonPath('concern.status', 'Resolved');
 
         $log = AuditLog::where('action', 'concern_updated')->first();
         $this->assertSame('Pending', $log->details['before']['status']);
-        $this->assertSame('In Progress', $log->details['after']['status']);
+        $this->assertSame('Resolved', $log->details['after']['status']);
+
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'In Progress'])
+            ->assertStatus(422);
+    }
+
+    public function test_ready_for_pickup_is_only_for_document_requests(): void
+    {
+        $resident = $this->tokenFor('res@example.com');
+        $admin = $this->tokenFor('admin@example.com', 'admin');
+
+        $requestId = $this->withToken($resident)->post('/api/concerns', $this->fileRequest(), ['Accept' => 'application/json'])
+            ->assertCreated()->json('concern.id');
+        $complaintId = $this->withToken($resident)->postJson('/api/concerns', [
+            'type' => 'Complaint', 'title' => 'Flooding', 'description' => 'Drainage clogged',
+        ])->json('concern.id');
+
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$requestId}", ['status' => 'Ready for Pickup'])
+            ->assertOk()
+            ->assertJsonPath('concern.status', 'Ready for Pickup');
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$requestId}", ['status' => 'Resolved'])
+            ->assertOk()
+            ->assertJsonPath('concern.status', 'Resolved');
+
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$complaintId}", ['status' => 'Ready for Pickup'])
+            ->assertStatus(422);
+        $this->assertSame('Pending', Concern::find($complaintId)->status);
     }
 
     public function test_invalid_status_is_rejected_by_validation(): void

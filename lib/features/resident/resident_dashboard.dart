@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:e_barangay_mo/core/theme/phosphor_icons.dart';
 
 import 'package:e_barangay_mo/features/profile/profile_menu.dart';
+import 'package:e_barangay_mo/features/resident/concern_details_page.dart';
 import 'package:e_barangay_mo/features/resident/submit_concern_page.dart';
 import 'package:e_barangay_mo/core/models/app_user.dart';
 import 'package:e_barangay_mo/core/models/concern.dart';
@@ -13,6 +14,7 @@ import 'package:e_barangay_mo/core/theme/app_tokens.dart';
 import 'package:e_barangay_mo/core/utils/concern_format.dart';
 import 'package:e_barangay_mo/core/widgets/brand_logo.dart';
 import 'package:e_barangay_mo/core/widgets/hero_panel.dart';
+import 'package:e_barangay_mo/core/widgets/notification_bell.dart';
 import 'package:e_barangay_mo/core/widgets/press_scale.dart';
 import 'package:e_barangay_mo/core/widgets/service_card.dart';
 
@@ -79,7 +81,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
 
   int get openCount => concerns.where((r) {
         final status = r.data['status'] ?? 'Pending';
-        return status == 'Pending' || status == 'In Progress';
+        return status == 'Pending' || status == readyForPickup;
       }).length;
 
   @override
@@ -95,6 +97,12 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
         titleSpacing: AppSpace.s4,
         title: const BrandLockup(height: 32, onHero: true),
         actions: [
+          NotificationBell(
+            onOpen: (row) => Navigator.push<void>(
+              context,
+              MaterialPageRoute(builder: (_) => ConcernDetailsPage(row: row)),
+            ),
+          ),
           ProfileMenu(
             user: user,
             onProfileChanged: (u) => setState(() => user = u),
@@ -257,8 +265,18 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
           status: row.data['status'] ?? 'Pending',
           statusLabel: statusLabel(row.data),
           note: _note(row.data),
-          noteMuted: row.data['type'] == 'Blotter' &&
-              parseDate(row.data['finalDate']) == null,
+          noteMuted: row.data['type'] == 'Complaint' ||
+              (row.data['type'] == 'Blotter' &&
+                  parseDate(row.data['finalDate']) == null),
+          trailing: Padding(
+            padding: const EdgeInsets.only(left: AppSpace.s2, top: AppSpace.s1),
+            child: Icon(PhosphorIconsRegular.caretRight,
+                size: 18, color: c.inkMuted),
+          ),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => ConcernDetailsPage(row: row)),
+          ),
         ),
         const SizedBox(height: AppSpace.s3),
       ],
@@ -266,6 +284,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
   }
 
   String? _note(Map<String, dynamic> data) {
+    if (data['type'] == 'Complaint') return "Tap to view or send replies";
     if (data['type'] == 'Blotter') {
       final scheduled = parseDate(data['finalDate']);
       if (scheduled != null) {

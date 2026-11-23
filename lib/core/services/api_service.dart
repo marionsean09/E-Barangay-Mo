@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 
 import 'package:e_barangay_mo/core/models/app_user.dart';
 import 'package:e_barangay_mo/core/models/concern.dart';
+import 'package:e_barangay_mo/core/models/concern_message.dart';
+import 'package:e_barangay_mo/core/models/reply_notification.dart';
 import 'package:e_barangay_mo/core/services/http_client_io.dart'
     if (dart.library.js_interop) 'package:e_barangay_mo/core/services/http_client_web.dart';
 
@@ -180,6 +182,34 @@ class ApiService {
   static Future<Concern> updateConcern(int id, Map<String, dynamic> changes) async {
     final body = await _json('PATCH', 'admin/concerns/$id', body: changes);
     return Concern.fromJson(body['concern']);
+  }
+
+  /// Complaint conversation. The server allows only the owner and admins.
+  static Future<List<ConcernMessage>> concernMessages(int concernId) async {
+    final body = await _json('GET', 'concerns/$concernId/messages');
+    return (body['messages'] as List)
+        .map((m) => ConcernMessage.fromJson(m as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<ConcernMessage> sendConcernMessage(
+      int concernId, String message) async {
+    final body = await _json('POST', 'concerns/$concernId/messages',
+        body: {'body': message});
+    return ConcernMessage.fromJson(body['message'] as Map<String, dynamic>);
+  }
+
+  static Future<void> markMessagesRead(int concernId, int lastMessageId) async {
+    await _json('POST', 'concerns/$concernId/messages/read',
+        body: {'last_message_id': lastMessageId});
+  }
+
+  /// Complaints with unread replies from the other side.
+  static Future<List<ReplyNotification>> replyNotifications() async {
+    final body = await _json('GET', 'notifications');
+    return (body['notifications'] as List)
+        .map((n) => ReplyNotification.fromJson(n as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<Uint8List> attachment(int id) async {

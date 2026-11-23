@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:e_barangay_mo/core/theme/phosphor_icons.dart';
 
@@ -10,6 +8,8 @@ import 'package:e_barangay_mo/core/theme/app_colors.dart';
 import 'package:e_barangay_mo/core/theme/app_tokens.dart';
 import 'package:e_barangay_mo/core/utils/concern_format.dart';
 import 'package:e_barangay_mo/core/widgets/app_card.dart';
+import 'package:e_barangay_mo/core/widgets/concern_photos.dart';
+import 'package:e_barangay_mo/core/widgets/concern_thread.dart';
 import 'package:e_barangay_mo/core/widgets/press_scale.dart';
 import 'package:e_barangay_mo/core/widgets/status_pill.dart';
 
@@ -85,13 +85,13 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
     if (picked == null) return;
 
     await save(
-      {'claim_date': apiDate(picked), 'status': 'Resolved'},
+      {'claim_date': apiDate(picked), 'status': readyForPickup},
       "Claiming date set to ${formatLongDate(picked)}",
     );
   }
 
   Future<void> setFinalDate(DateTime day, String message) async {
-    await save({'final_date': apiDate(day), 'status': 'In Progress'}, message);
+    await save({'final_date': apiDate(day), 'status': 'Pending'}, message);
   }
 
   Future<void> pickFinalDate() async {
@@ -190,6 +190,11 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                   ),
                   const SizedBox(height: AppSpace.s4),
 
+                  if (data['type'] == 'Complaint') ...[
+                    ConcernThread(concernId: widget.row.id),
+                    const SizedBox(height: AppSpace.s4),
+                  ],
+
                   if (isRequest || isBlotter) ...[
                     AppCard(
                       padding: const EdgeInsets.all(AppSpace.s6),
@@ -202,29 +207,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                           if (photos.isEmpty)
                             Text("No photos attached.", style: text.bodySmall)
                           else
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final columns =
-                                  constraints.maxWidth < 480 ? 2 : 4;
-                              final width = (constraints.maxWidth -
-                                      AppSpace.s3 * (columns - 1)) /
-                                  columns;
-                              return Wrap(
-                                spacing: AppSpace.s3,
-                                runSpacing: AppSpace.s3,
-                                children: [
-                                  for (final (label, fileId) in photos)
-                                    SizedBox(
-                                      width: width,
-                                      child: _RequirementPhoto(
-                                        label: label,
-                                        fileId: fileId,
-                                      ),
-                                    ),
-                                ],
-                              );
-                            },
-                          ),
+                            ConcernPhotoGrid(photos: photos),
                         ],
                       ),
                     ),
@@ -242,7 +225,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                           spacing: AppSpace.s2,
                           runSpacing: AppSpace.s2,
                           children: [
-                            for (final s in concernStatuses)
+                            for (final s in statusesFor(data['type']))
                               ChoiceChip(
                                 label: Text(s),
                                 selected: status == s,
@@ -411,133 +394,17 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                 OutlinedButton(
                   onPressed: isSaving
                       ? null
-                      : () => save({'claim_date': null}, "Claiming date cleared"),
+                      : () => save({
+                            'claim_date': null,
+                            if (data['status'] == readyForPickup)
+                              'status': 'Pending',
+                          }, "Claiming date cleared"),
                   child: const Text("Clear"),
                 ),
             ],
           ),
         ],
       ),
-    );
-  }
-}
-
-class _RequirementPhoto extends StatefulWidget {
-  const _RequirementPhoto({required this.label, required this.fileId});
-
-  final String label;
-  final int? fileId;
-
-  @override
-  State<_RequirementPhoto> createState() => _RequirementPhotoState();
-}
-
-class _RequirementPhotoState extends State<_RequirementPhoto> {
-  Future<Uint8List>? bytes;
-
-  bool get hasFile => widget.fileId != null;
-
-  @override
-  void initState() {
-    super.initState();
-    load();
-  }
-
-  void load() {
-    if (!hasFile) return;
-    setState(() {
-      // Streamed through the API, which checks the viewer is the owner
-      // or an admin, decrypts the file and verifies its checksum.
-      bytes = ApiService.attachment(widget.fileId!).catchError((Object e) {
-        debugPrint('Requirement photo ${widget.fileId} failed: $e');
-        throw e;
-      });
-    });
-  }
-
-  String reason(Object? error) {
-    if (error is ApiException) {
-      if (error.statusCode == 403) return "You don't have access to this file.";
-      if (error.statusCode == 404) return "Photo not found.";
-      return error.message;
-    }
-    return "Could not load. Check the connection.";
-  }
-
-  void openFull(Uint8List data) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.lg)),
-        child: InteractiveViewer(child: Image.memory(data)),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final text = Theme.of(context).textTheme;
-
-    Widget placeholder(IconData icon, String message) => Container(
-          color: c.surface,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.all(AppSpace.s2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: c.inkMuted),
-              const SizedBox(height: AppSpace.s1),
-              Text(message,
-                  style: text.bodySmall, textAlign: TextAlign.center),
-            ],
-          ),
-        );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AspectRatio(
-          aspectRatio: 1,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.sm),
-            child: !hasFile || bytes == null
-                ? placeholder(PhosphorIconsRegular.imageBroken, "Not uploaded")
-                : FutureBuilder<Uint8List>(
-                    future: bytes,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return InkWell(
-                          onTap: load,
-                          child: placeholder(
-                            PhosphorIconsRegular.warning,
-                            "${reason(snapshot.error)} Tap to retry.",
-                          ),
-                        );
-                      }
-                      if (!snapshot.hasData) {
-                        return Container(color: c.border);
-                      }
-                      return InkWell(
-                        onTap: () => openFull(snapshot.data!),
-                        child: Image.memory(
-                          snapshot.data!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => placeholder(
-                            PhosphorIconsRegular.imageBroken,
-                            "Can't show this format. Ask for a JPG or PNG.",
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ),
-        const SizedBox(height: AppSpace.s2),
-        Text(widget.label, style: text.bodySmall),
-      ],
     );
   }
 }

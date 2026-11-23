@@ -9,6 +9,9 @@ GRANT SELECT, INSERT, UPDATE ON ebarangay.concerns      TO 'ebarangay_app'@'loca
 GRANT SELECT, INSERT, UPDATE ON ebarangay.refresh_tokens TO 'ebarangay_app'@'localhost';
 GRANT SELECT, INSERT         ON ebarangay.attachments   TO 'ebarangay_app'@'localhost';
 
+-- Complaint replies are append-only: they can't be edited or erased by the app.
+GRANT SELECT, INSERT ON ebarangay.concern_messages TO 'ebarangay_app'@'localhost';
+
 -- Audit trail is append-only: the app can add entries but never edit or erase them.
 GRANT INSERT ON ebarangay.audit_logs TO 'ebarangay_app'@'localhost';
 

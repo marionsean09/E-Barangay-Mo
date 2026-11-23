@@ -2,7 +2,14 @@ import 'package:flutter/widgets.dart';
 import 'package:e_barangay_mo/core/models/concern.dart';
 import 'package:e_barangay_mo/core/theme/phosphor_icons.dart';
 
-const concernStatuses = ['Pending', 'In Progress', 'Resolved', 'Rejected'];
+const readyForPickup = 'Ready for Pickup';
+
+const concernStatuses = ['Pending', readyForPickup, 'Resolved', 'Rejected'];
+
+/// Statuses an admin can set. Ready for Pickup is for document requests only.
+List<String> statusesFor(String? type) => type == 'Request'
+    ? concernStatuses
+    : concernStatuses.where((s) => s != readyForPickup).toList();
 
 const _months = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -30,6 +37,12 @@ String formatDate(DateTime date) =>
 String formatLongDate(DateTime date) =>
     '${_weekdays[date.weekday - 1]}, ${formatDate(date)}';
 
+String formatDateTime(DateTime date) {
+  final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '${formatDate(date)}, $hour:$minute ${date.hour < 12 ? 'AM' : 'PM'}';
+}
+
 /// Calendar date in the format the API expects: yyyy-MM-dd.
 String apiDate(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
@@ -44,11 +57,8 @@ String referenceFor(Concern row) {
 
 String statusLabel(Map<String, dynamic> data) {
   final String status = data['status'] ?? 'Pending';
-  if (status == 'Resolved' && data['type'] == 'Request') {
-    return 'Ready for pickup';
-  }
   if (data['type'] == 'Blotter') {
-    if (status == 'In Progress') return 'Scheduled';
+    if (status == 'Pending' && data['finalDate'] != null) return 'Scheduled';
     if (status == 'Resolved') return 'Settled';
   }
   return status;

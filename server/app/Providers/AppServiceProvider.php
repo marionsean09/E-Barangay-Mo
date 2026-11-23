@@ -60,6 +60,9 @@ class AppServiceProvider extends ServiceProvider
         // Spam submissions (each can carry 4 photos).
         RateLimiter::for('submit', fn (Request $request) => Limit::perMinute(5)->by('user:'.$request->user()?->id));
 
+        // Spam in complaint conversations.
+        RateLimiter::for('message', fn (Request $request) => Limit::perMinute(20)->by('message:'.$request->user()?->id));
+
         RateLimiter::for('api', fn (Request $request) => Limit::perMinute(120)->by('user:'.($request->user()?->id ?? $request->ip())));
     }
 }

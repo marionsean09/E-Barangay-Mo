@@ -10,7 +10,10 @@ class Concern extends Model
 {
     public const TYPES = ['Complaint', 'Suggestion', 'Request', 'Blotter'];
 
-    public const STATUSES = ['Pending', 'In Progress', 'Resolved', 'Rejected'];
+    public const READY_FOR_PICKUP = 'Ready for Pickup';
+
+    // Ready for Pickup applies to document requests only.
+    public const STATUSES = ['Pending', self::READY_FOR_PICKUP, 'Resolved', 'Rejected'];
 
     public const REQUEST_TYPES = [
         'Barangay Clearance',
@@ -47,6 +50,12 @@ class Concern extends Model
             'final_date' => 'date:Y-m-d',
             'claim_date' => 'date:Y-m-d',
         ];
+    }
+
+    /** The read marker for this user's side of the conversation. */
+    public static function readColumnFor(User $user): string
+    {
+        return $user->isAdmin() ? 'admin_read_message_id' : 'resident_read_message_id';
     }
 
     public function user(): BelongsTo

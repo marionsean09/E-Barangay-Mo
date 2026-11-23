@@ -13,6 +13,7 @@ import 'package:e_barangay_mo/core/theme/app_tokens.dart';
 import 'package:e_barangay_mo/core/utils/concern_format.dart';
 import 'package:e_barangay_mo/core/widgets/brand_logo.dart';
 import 'package:e_barangay_mo/core/widgets/hero_panel.dart';
+import 'package:e_barangay_mo/core/widgets/notification_bell.dart';
 import 'package:e_barangay_mo/core/widgets/service_card.dart';
 import 'package:e_barangay_mo/core/widgets/status_pill.dart';
 
@@ -97,6 +98,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         titleSpacing: AppSpace.s4,
         title: const BrandLockup(height: 32, onHero: true),
         actions: [
+          NotificationBell(onOpen: openDetail),
           IconButton(
             icon: const Icon(PhosphorIconsRegular.arrowClockwise),
             tooltip: "Refresh",
@@ -162,7 +164,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       HeroOverlap(
                         amount: _overlap,
                         child: _StatCard(
-                          inProgress: count('In Progress'),
+                          pending: pending,
+                          pickup: count(readyForPickup),
                           resolved: count('Resolved'),
                           rejected: count('Rejected'),
                         ),
@@ -283,12 +286,14 @@ String? _note(Map<String, dynamic> data) {
 
 class _StatCard extends StatelessWidget {
   const _StatCard({
-    required this.inProgress,
+    required this.pending,
+    required this.pickup,
     required this.resolved,
     required this.rejected,
   });
 
-  final int inProgress;
+  final int pending;
+  final int pickup;
   final int resolved;
   final int rejected;
 
@@ -314,6 +319,13 @@ class _StatCard extends StatelessWidget {
 
     Widget divider() => VerticalDivider(width: 1, color: c.border);
 
+    Widget row(List<Widget> cells) => IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: cells,
+          ),
+        );
+
     return Container(
       decoration: BoxDecoration(
         color: c.surfaceRaised,
@@ -321,18 +333,32 @@ class _StatCard extends StatelessWidget {
         border: Border.all(color: c.border),
         boxShadow: c.cardShadow,
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            cell('In Progress', inProgress),
-            divider(),
-            cell('Resolved', resolved),
-            divider(),
-            cell('Rejected', rejected),
-          ],
-        ),
-      ),
+      child: MediaQuery.sizeOf(context).width >= 600
+          ? row([
+              cell('Pending', pending),
+              divider(),
+              cell(readyForPickup, pickup),
+              divider(),
+              cell('Resolved', resolved),
+              divider(),
+              cell('Rejected', rejected),
+            ])
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                row([
+                  cell('Pending', pending),
+                  divider(),
+                  cell(readyForPickup, pickup),
+                ]),
+                Divider(height: 1, color: c.border),
+                row([
+                  cell('Resolved', resolved),
+                  divider(),
+                  cell('Rejected', rejected),
+                ]),
+              ],
+            ),
     );
   }
 }

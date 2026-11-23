@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Concern;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -12,7 +13,15 @@ class UpdateConcernRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required_without_all:final_date,claim_date', Rule::in(Concern::STATUSES)],
+            'status' => [
+                'required_without_all:final_date,claim_date',
+                Rule::in(Concern::STATUSES),
+                function (string $attribute, mixed $value, Closure $fail) {
+                    if ($value === Concern::READY_FOR_PICKUP && $this->route('concern')->type !== 'Request') {
+                        $fail('Only document requests can be marked Ready for Pickup.');
+                    }
+                },
+            ],
             'final_date' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
             'claim_date' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
         ];
