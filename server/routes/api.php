@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:register');
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
+    Route::post('verify-email', [AuthController::class, 'verifyEmail'])->middleware('throttle:verify');
+    Route::post('resend-code', [AuthController::class, 'resendCode'])->middleware('throttle:resend');
+    Route::post('google', [AuthController::class, 'google'])->middleware('throttle:google');
 
     // These two read the httpOnly refresh cookie, so they get the CSRF check.
     Route::middleware([VerifyOrigin::class, 'throttle:refresh'])->group(function () {

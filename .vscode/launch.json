@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Port 5000 must match ALLOWED_ORIGINS in server/.env, or the API rejects requests (CORS).
+      // Start the API first: cd server; php artisan serve --port=8000
+      "name": "eBarangay Mo (Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "args": [
+        "--web-port", "5000",
+        "--dart-define=API_URL=http://localhost:8000/api/",
+        // Same value as GOOGLE_CLIENT_ID in server/.env. Empty = no Google button.
+        "--dart-define=GOOGLE_CLIENT_ID=216401360866-0k9do234dru3sht4rv6vqsmqg9b2dpbm.apps.googleusercontent.com"
+      ]
+    }
+  ]
+}

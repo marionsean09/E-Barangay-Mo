@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // "Sign in with Google". The OAuth Web client ID (public, not a secret).
+    // Google ID tokens are accepted only if issued for this exact client.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
 ];

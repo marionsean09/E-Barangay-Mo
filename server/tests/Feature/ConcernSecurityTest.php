@@ -18,11 +18,7 @@ class ConcernSecurityTest extends TestCase
 
     private function tokenFor(string $email, string $role = 'resident'): string
     {
-        $token = $this->postJson('/api/auth/register', [
-            'full_name' => 'Test User',
-            'email' => $email,
-            'password' => 'Secret123',
-        ])->json('accessToken');
+        $token = $this->signUp($email, extra: ['full_name' => 'Test User'])->json('accessToken');
 
         User::where('email', $email)->first()->forceFill(['role' => $role])->save();
         $this->app['auth']->forgetGuards();

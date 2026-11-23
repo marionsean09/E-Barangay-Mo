@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\Concern;
 use Carbon\CarbonImmutable;
 use Closure;
+use ErrorException;
 use finfo;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -16,15 +17,22 @@ class StoreConcernRequest extends FormRequest
     public function rules(): array
     {
         $photo = [
-            'bail', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp',
+            'bail', 'file', 'max:5120',
             // Check the real bytes (magic numbers), not the filename or the
             // Content-Type the client claims. Stops "shell.php" renamed to ".jpg".
+            // Runs before 'mimes', which also opens the file. A file that can't
+            // be read (e.g. blocked by antivirus) is rejected, not a server error.
             function (string $attribute, mixed $value, Closure $fail) {
-                $mime = (new finfo(FILEINFO_MIME_TYPE))->file($value->getRealPath());
+                try {
+                    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($value->getRealPath());
+                } catch (ErrorException) {
+                    $mime = false;
+                }
                 if (! in_array($mime, self::ALLOWED_MIMES, true)) {
                     $fail('The :attribute must be a JPG, PNG or WEBP image.');
                 }
             },
+            'mimes:jpg,jpeg,png,webp',
         ];
 
         $rules = [

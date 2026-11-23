@@ -150,8 +150,11 @@ the app needs no `API_URL`.
 
 ```
 lib/                     Flutter app
-  services/api_service.dart   all HTTP calls, token handling
-  models/                     AppUser, Concern
+  main.dart                   entry point
+  core/services/api_service.dart   all HTTP calls, token handling
+  core/models/                AppUser, Concern
+  core/theme/, core/widgets/  shared styling and UI components
+  features/                   screens: auth/, resident/, admin/, profile/
 server/                  Laravel API
   routes/api.php              every endpoint + its middleware
   app/Http/Middleware/        RBAC, security headers, CSRF origin check, HTTPS

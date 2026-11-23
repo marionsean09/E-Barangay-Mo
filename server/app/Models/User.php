@@ -14,7 +14,8 @@ class User extends Authenticatable
     // {"role":"admin"} in a request body and promote themselves.
     protected $fillable = ['full_name', 'email', 'password'];
 
-    protected $hidden = ['password'];
+    // Verification fields are not fillable either: only EmailVerification sets them.
+    protected $hidden = ['password', 'verification_code_hash'];
 
     protected $attributes = ['role' => 'resident'];
 
@@ -22,7 +23,16 @@ class User extends Authenticatable
     {
         return [
             'password' => 'hashed',
+            'email_verified_at' => 'datetime',
+            'verification_expires_at' => 'datetime',
+            'verification_sent_at' => 'datetime',
+            'verification_attempts' => 'integer',
         ];
+    }
+
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
     }
 
     public function isAdmin(): bool

@@ -22,9 +22,12 @@ class SecurityHeaders
         $headers->set('Content-Security-Policy', config($isHtml ? 'security.csp_app' : 'security.csp_api'));
         $headers->set('X-Frame-Options', 'DENY');
         $headers->set('X-Content-Type-Options', 'nosniff');
-        $headers->set('Referrer-Policy', 'no-referrer');
+        // The app page is relaxed just enough for "Sign in with Google": Google
+        // checks the page's origin via the referrer, and its popup must be able
+        // to report back. API responses keep the strictest values.
+        $headers->set('Referrer-Policy', $isHtml ? 'strict-origin-when-cross-origin' : 'no-referrer');
         $headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-        $headers->set('Cross-Origin-Opener-Policy', 'same-origin');
+        $headers->set('Cross-Origin-Opener-Policy', $isHtml ? 'same-origin-allow-popups' : 'same-origin');
         $headers->set('Cross-Origin-Resource-Policy', 'same-site');
 
         // HSTS only makes sense over HTTPS (browsers ignore it on HTTP).

@@ -29,14 +29,16 @@ return [
 
     // CSP for the Flutter web page. Flutter's CanvasKit renderer is
     // WebAssembly ('wasm-unsafe-eval') and injects inline styles; fallback
-    // glyph fonts come from fonts.gstatic.com.
+    // glyph fonts come from fonts.gstatic.com. accounts.google.com/gsi is the
+    // "Sign in with Google" button (script, iframe and its stylesheet).
     'csp_app' => implode('; ', [
         "default-src 'self'",
-        "script-src 'self' 'wasm-unsafe-eval'",
-        "style-src 'self' 'unsafe-inline'",
+        "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client",
+        "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
         "img-src 'self' data: blob:",
         "font-src 'self' data: https://fonts.gstatic.com",
-        "connect-src 'self' https://fonts.gstatic.com",
+        "connect-src 'self' https://fonts.gstatic.com https://accounts.google.com/gsi/",
+        "frame-src https://accounts.google.com/gsi/",
         "worker-src 'self' blob:",
         "object-src 'none'",
         "base-uri 'self'",

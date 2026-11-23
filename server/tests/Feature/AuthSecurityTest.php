@@ -35,12 +35,12 @@ class AuthSecurityTest extends TestCase
 
     public function test_client_cannot_register_itself_as_admin(): void
     {
-        $this->register(['role' => 'admin'])->assertCreated()->assertJsonPath('user.role', 'resident');
+        $this->signUp(extra: ['role' => 'admin'])->assertJsonPath('user.role', 'resident');
     }
 
     public function test_refresh_token_is_an_httponly_strict_secure_cookie_not_in_json(): void
     {
-        $response = $this->register()->assertCreated();
+        $response = $this->signUp();
 
         $cookie = $response->getCookie('ebm_refresh', false);
         $this->assertNotNull($cookie);
@@ -101,7 +101,7 @@ class AuthSecurityTest extends TestCase
 
     public function test_access_token_expires_after_fifteen_minutes(): void
     {
-        $token = $this->register()->json('accessToken');
+        $token = $this->signUp()->json('accessToken');
 
         $this->withToken($token)->getJson('/api/me')->assertOk();
 
@@ -113,7 +113,7 @@ class AuthSecurityTest extends TestCase
 
     public function test_refresh_rotates_the_token_and_detects_reuse(): void
     {
-        $first = $this->register()->getCookie('ebm_refresh', false)->getValue();
+        $first = $this->signUp()->getCookie('ebm_refresh', false)->getValue();
 
         // Normal refresh: new access token + new refresh cookie.
         $response = $this->withCredentials()->withUnencryptedCookie('ebm_refresh', $first)
@@ -139,7 +139,7 @@ class AuthSecurityTest extends TestCase
 
     public function test_cookie_endpoints_reject_cross_site_requests(): void
     {
-        $cookie = $this->register()->getCookie('ebm_refresh', false)->getValue();
+        $cookie = $this->signUp()->getCookie('ebm_refresh', false)->getValue();
 
         // A plain cross-site form post has no custom header.
         $this->withCredentials()->withUnencryptedCookie('ebm_refresh', $cookie)
@@ -156,7 +156,7 @@ class AuthSecurityTest extends TestCase
 
     public function test_logout_revokes_the_refresh_token(): void
     {
-        $cookie = $this->register()->getCookie('ebm_refresh', false)->getValue();
+        $cookie = $this->signUp()->getCookie('ebm_refresh', false)->getValue();
 
         $this->withCredentials()->withUnencryptedCookie('ebm_refresh', $cookie)
             ->withHeaders(self::JSON)
@@ -171,7 +171,7 @@ class AuthSecurityTest extends TestCase
 
     public function test_changing_password_requires_current_password(): void
     {
-        $token = $this->register()->json('accessToken');
+        $token = $this->signUp()->json('accessToken');
 
         $this->withToken($token)->patchJson('/api/me', [
             'full_name' => 'Juan Dela Cruz',

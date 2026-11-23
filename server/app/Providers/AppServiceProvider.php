@@ -40,6 +40,21 @@ class AppServiceProvider extends ServiceProvider
         // Mass account creation.
         RateLimiter::for('register', fn (Request $request) => Limit::perHour(10)->by($request->ip()));
 
+        // Guessing email codes. Each code also dies after 5 wrong tries.
+        RateLimiter::for('verify', fn (Request $request) => [
+            Limit::perMinute(5)->by('verify:'.strtolower((string) $request->input('email')).'|'.$request->ip()),
+            Limit::perMinute(20)->by('verify-ip:'.$request->ip()),
+        ]);
+
+        // Sending emails (also limited to one per minute per account).
+        RateLimiter::for('resend', fn (Request $request) => [
+            Limit::perHour(5)->by('resend:'.strtolower((string) $request->input('email'))),
+            Limit::perHour(20)->by('resend-ip:'.$request->ip()),
+        ]);
+
+        // Each call makes a request to Google, so cap it per IP.
+        RateLimiter::for('google', fn (Request $request) => Limit::perMinute(10)->by('google:'.$request->ip()));
+
         RateLimiter::for('refresh', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
 
         // Spam submissions (each can carry 4 photos).

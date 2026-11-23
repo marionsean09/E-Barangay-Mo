@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'package:e_barangay_mo/theme/app_theme.dart';
-import 'package:e_barangay_mo/auth/auth_gate.dart';
+import 'package:e_barangay_mo/core/theme/app_theme.dart';
+import 'package:e_barangay_mo/features/auth/auth_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
