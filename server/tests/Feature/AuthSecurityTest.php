@@ -19,6 +19,7 @@ class AuthSecurityTest extends TestCase
             'full_name' => 'Juan Dela Cruz',
             'email' => 'juan@example.com',
             'password' => 'Secret123',
+            'privacy_consent' => true,
         ], $overrides));
     }
 

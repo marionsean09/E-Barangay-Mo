@@ -27,6 +27,10 @@ return [
 
     'force_https' => (bool) env('FORCE_HTTPS', false),
 
+    // Only the console purge job uses this. The app's own DB account has no
+    // DELETE permission on attachments, and web requests never open this one.
+    'retention_connection' => env('RETENTION_DB_CONNECTION', 'migrator'),
+
     // CSP for the Flutter web page. Flutter's CanvasKit renderer is
     // WebAssembly ('wasm-unsafe-eval') and injects inline styles; fallback
     // glyph fonts come from fonts.gstatic.com. accounts.google.com/gsi is the

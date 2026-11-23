@@ -18,11 +18,16 @@ class RegisterRequest extends FormRequest
             'email' => ['required', 'string', 'email:rfc', 'max:191',
                 Rule::unique('users', 'email')->whereNotNull('email_verified_at')],
             'password' => ['required', 'string', 'max:128', Password::min(8)->letters()->numbers()],
+            // Lawful basis under RA 10173, sections 12 and 13.
+            'privacy_consent' => ['accepted'],
         ];
     }
 
     public function messages(): array
     {
-        return ['full_name.regex' => 'Your name can only contain letters, spaces, dots, apostrophes and hyphens.'];
+        return [
+            'full_name.regex' => 'Your name can only contain letters, spaces, dots, apostrophes and hyphens.',
+            'privacy_consent.accepted' => 'Please read and accept the privacy notice to create an account.',
+        ];
     }
 }

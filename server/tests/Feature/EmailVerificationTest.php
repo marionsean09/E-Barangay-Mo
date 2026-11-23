@@ -13,7 +13,7 @@ class EmailVerificationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const ACCOUNT = ['full_name' => 'Juan Dela Cruz', 'email' => 'juan@example.com', 'password' => 'Secret123'];
+    private const ACCOUNT = ['full_name' => 'Juan Dela Cruz', 'email' => 'juan@example.com', 'password' => 'Secret123', 'privacy_consent' => true];
 
     private function verify(string $code, string $password = 'Secret123')
     {

@@ -4,7 +4,12 @@ import 'package:e_barangay_mo/core/theme/phosphor_icons.dart';
 
 const readyForPickup = 'Ready for Pickup';
 
-const concernStatuses = ['Pending', readyForPickup, 'Resolved', 'Rejected'];
+const concernStatuses = [
+  'Pending',
+  readyForPickup,
+  'Resolved',
+  'Rejected',
+];
 
 /// Statuses an admin can set. Ready for Pickup is for document requests only.
 List<String> statusesFor(String? type) => type == 'Request'

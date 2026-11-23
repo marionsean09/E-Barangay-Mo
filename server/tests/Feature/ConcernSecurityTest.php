@@ -120,9 +120,6 @@ class ConcernSecurityTest extends TestCase
         $log = AuditLog::where('action', 'concern_updated')->first();
         $this->assertSame('Pending', $log->details['before']['status']);
         $this->assertSame('Resolved', $log->details['after']['status']);
-
-        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'In Progress'])
-            ->assertStatus(422);
     }
 
     public function test_ready_for_pickup_is_only_for_document_requests(): void

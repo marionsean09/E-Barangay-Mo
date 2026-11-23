@@ -37,6 +37,7 @@ abstract class TestCase extends BaseTestCase
             'full_name' => 'Juan Dela Cruz',
             'email' => $email,
             'password' => $password,
+            'privacy_consent' => true,
         ], $extra))->assertCreated();
 
         return $this->postJson('/api/auth/verify-email', [

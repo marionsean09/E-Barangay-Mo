@@ -69,9 +69,15 @@ class ApiService {
     required String fullName,
     required String email,
     required String password,
+    required bool privacyConsent,
   }) async {
     await _json('POST', 'auth/register',
-        body: {'full_name': fullName, 'email': email, 'password': password},
+        body: {
+          'full_name': fullName,
+          'email': email,
+          'password': password,
+          'privacy_consent': privacyConsent,
+        },
         auth: false);
   }
 
@@ -95,9 +101,11 @@ class ApiService {
 
   /// Trades a Google ID token for a session. The server checks the token
   /// with Google; the app never decides who the user is.
-  static Future<AppUser> googleLogin(String idToken) async {
+  static Future<AppUser> googleLogin(String idToken,
+      {bool privacyConsent = false}) async {
     final body = await _json('POST', 'auth/google',
-        body: {'id_token': idToken}, auth: false);
+        body: {'id_token': idToken, 'privacy_consent': privacyConsent},
+        auth: false);
     return _takeSession(body);
   }
 

@@ -42,6 +42,7 @@ class AuthController extends Controller
         $user = User::where('email', $email)->first() ?? new User(['email' => $email]);
         $user->full_name = $data['full_name'];
         $user->password = $data['password']; // hashed by the 'hashed' cast (argon2id)
+        $user->privacy_consented_at = now(); // RegisterRequest requires the checkbox.
         $user->save(); // role is not fillable, so every new account is a resident.
 
         SecurityLog::event('register', ['email' => SecurityLog::maskEmail($email)], $user->id);
@@ -158,6 +159,14 @@ class AuthController extends Controller
 
         $user = User::where('email', $claims['email'])->first();
 
+        // A person gets a working account here only after accepting the notice.
+        if ((! $user || ! $user->hasVerifiedEmail()) && ! $request->boolean('privacy_consent')) {
+            return response()->json([
+                'message' => 'New here? Open Create account and accept the privacy notice first.',
+                'consentRequired' => true,
+            ], 403);
+        }
+
         if (! $user) {
             // Random password nobody knows: this account signs in with Google
             // (or sets a password later from Edit profile).
@@ -175,6 +184,7 @@ class AuthController extends Controller
 
         if (! $user->hasVerifiedEmail()) {
             $user->forceFill([
+                'privacy_consented_at' => now(),
                 'email_verified_at' => now(),
                 'verification_code_hash' => null,
                 'verification_expires_at' => null,

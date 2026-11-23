@@ -89,7 +89,7 @@ cd server
 php artisan test
 ```
 
-23 tests attack the API and check each one is blocked: SQL injection, stored
+The tests attack the API and check each one is blocked: SQL injection, stored
 XSS, wrong-role access, reading another user's ID photo, refresh-token
 replay, CSRF from another origin, login brute force, disguised file upload,
 and more. The tests use an in-memory SQLite database, so MySQL isn't needed.

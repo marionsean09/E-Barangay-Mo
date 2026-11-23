@@ -17,4 +17,7 @@ fi
 
 php artisan config:cache
 
+# Runs the daily attachment retention job.
+su -p -s /bin/sh www-data -c 'php artisan schedule:work' &
+
 exec apache2-foreground

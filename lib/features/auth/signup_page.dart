@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:e_barangay_mo/core/theme/phosphor_icons.dart';
 import 'package:e_barangay_mo/core/services/api_service.dart';
 import 'package:e_barangay_mo/features/auth/google_sign_in_section.dart';
+import 'package:e_barangay_mo/features/auth/privacy_notice.dart';
 import 'package:e_barangay_mo/features/auth/verify_email_page.dart';
 import 'package:e_barangay_mo/core/theme/app_colors.dart';
 import 'package:e_barangay_mo/core/theme/app_tokens.dart';
@@ -22,6 +23,7 @@ class _SignupPageState extends State<SignupPage> {
   final fullName = TextEditingController();
 
   bool isLoading = false;
+  bool acceptedPrivacy = false;
 
   void signUp() async {
     try {
@@ -34,6 +36,7 @@ class _SignupPageState extends State<SignupPage> {
         fullName: fullName.text.trim(),
         email: address,
         password: password.text,
+        privacyConsent: acceptedPrivacy,
       );
 
       if (!mounted) return;
@@ -110,14 +113,48 @@ class _SignupPageState extends State<SignupPage> {
                       prefixIcon: Icon(PhosphorIconsRegular.lock),
                     ),
                   ),
-                  const SizedBox(height: AppSpace.s6),
+                  const SizedBox(height: AppSpace.s4),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: acceptedPrivacy,
+                        onChanged: (value) =>
+                            setState(() => acceptedPrivacy = value ?? false),
+                      ),
+                      const SizedBox(width: AppSpace.s2),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: AppSpace.s2),
+                              child: Text(
+                                "I have read the privacy notice and consent to the processing of my personal information.",
+                                style: text.bodySmall,
+                              ),
+                            ),
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                              ),
+                              onPressed: () => showPrivacyNotice(context),
+                              child: const Text("Read the privacy notice"),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpace.s4),
 
                   SizedBox(
                     width: double.infinity,
                     child: PressScale(
-                      enabled: !isLoading,
+                      enabled: !isLoading && acceptedPrivacy,
                       child: ElevatedButton(
-                        onPressed: isLoading ? null : signUp,
+                        onPressed: isLoading || !acceptedPrivacy ? null : signUp,
                         child: isLoading
                             ? SizedBox(
                                 width: 20,
@@ -131,7 +168,10 @@ class _SignupPageState extends State<SignupPage> {
                       ),
                     ),
                   ),
-                  const GoogleSignInSection(signUp: true),
+                  GoogleSignInSection(
+                    signUp: true,
+                    privacyConsent: acceptedPrivacy,
+                  ),
                 ],
               ),
             ),

@@ -34,9 +34,26 @@ class GoogleSignInTest extends TestCase
         ], $overrides), $status)]);
     }
 
-    private function signInWithGoogle()
+    private function signInWithGoogle(bool $consent = true)
     {
-        return $this->postJson('/api/auth/google', ['id_token' => self::TOKEN]);
+        return $this->postJson('/api/auth/google', ['id_token' => self::TOKEN, 'privacy_consent' => $consent]);
+    }
+
+    public function test_new_google_account_needs_privacy_consent(): void
+    {
+        $this->googleSays();
+
+        $this->signInWithGoogle(false)
+            ->assertStatus(403)
+            ->assertJsonPath('consentRequired', true)
+            ->assertJsonMissingPath('accessToken');
+        $this->assertSame(0, User::count());
+
+        $this->signInWithGoogle()->assertOk();
+        $this->assertNotNull(User::first()->privacy_consented_at);
+
+        // Returning users are not asked again.
+        $this->signInWithGoogle(false)->assertOk();
     }
 
     public function test_new_google_user_gets_a_verified_resident_account(): void
@@ -94,7 +111,7 @@ class GoogleSignInTest extends TestCase
     {
         // Someone started a sign-up with Maria's address and never verified it.
         $this->postJson('/api/auth/register', [
-            'full_name' => 'Squatter', 'email' => 'maria@gmail.com', 'password' => 'Squatter1',
+            'full_name' => 'Squatter', 'email' => 'maria@gmail.com', 'password' => 'Squatter1', 'privacy_consent' => true,
         ])->assertCreated();
 
         $this->googleSays();

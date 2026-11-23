@@ -10,10 +10,17 @@ import 'package:e_barangay_mo/features/auth/google_button_io.dart'
 /// "or" divider + Google button. Hidden when the app was built without a
 /// GOOGLE_CLIENT_ID, so nothing breaks before Google is set up.
 class GoogleSignInSection extends StatefulWidget {
-  const GoogleSignInSection({super.key, this.signUp = false});
+  const GoogleSignInSection({
+    super.key,
+    this.signUp = false,
+    this.privacyConsent = false,
+  });
 
   /// Shows "Sign up with Google" instead of "Continue with Google".
   final bool signUp;
+
+  /// Whether the privacy notice was accepted on the sign-up page.
+  final bool privacyConsent;
 
   @override
   State<GoogleSignInSection> createState() => _GoogleSignInSectionState();
@@ -47,7 +54,8 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await ApiService.googleLogin(idToken);
+      await ApiService.googleLogin(idToken,
+          privacyConsent: widget.signUp && widget.privacyConsent);
       if (!mounted) return;
       goToAuthGate(context);
     } on ApiException catch (e) {
@@ -104,6 +112,10 @@ class _GoogleSignInSectionState extends State<GoogleSignInSection> {
             }
             if (snapshot.hasError) {
               return Text("Google sign-in is unavailable right now.",
+                  style: text.bodySmall, textAlign: TextAlign.center);
+            }
+            if (widget.signUp && !widget.privacyConsent) {
+              return Text("Accept the privacy notice to sign up with Google.",
                   style: text.bodySmall, textAlign: TextAlign.center);
             }
             return Center(

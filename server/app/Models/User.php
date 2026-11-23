@@ -24,6 +24,7 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
             'email_verified_at' => 'datetime',
+            'privacy_consented_at' => 'datetime',
             'verification_expires_at' => 'datetime',
             'verification_sent_at' => 'datetime',
             'verification_attempts' => 'integer',

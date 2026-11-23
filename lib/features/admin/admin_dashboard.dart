@@ -311,7 +311,11 @@ class _StatCard extends StatelessWidget {
               children: [
                 Text("$value", style: text.headlineMedium?.copyWith(height: 1)),
                 const SizedBox(height: AppSpace.s2),
-                StatusPill(status),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: StatusPill(status),
+                ),
               ],
             ),
           ),
@@ -333,7 +337,7 @@ class _StatCard extends StatelessWidget {
         border: Border.all(color: c.border),
         boxShadow: c.cardShadow,
       ),
-      child: MediaQuery.sizeOf(context).width >= 600
+      child: MediaQuery.sizeOf(context).width >= 760
           ? row([
               cell('Pending', pending),
               divider(),

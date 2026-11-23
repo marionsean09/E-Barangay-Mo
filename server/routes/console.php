@@ -1,9 +1,13 @@
 <?php
 
+use App\Models\Attachment;
 use App\Models\User;
+use App\Services\AttachmentStore;
 use App\Services\TokenService;
 use App\Support\SecurityLog;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 
@@ -76,3 +80,39 @@ Artisan::command('user:password {email}', function (string $email, TokenService 
 
     $this->info("Password updated for {$user->email}. All sessions were signed out.");
 })->purpose('Reset a user password (hidden prompt)');
+
+/*
+| Retention (project plan, section 2): uploaded files are deleted one year after
+| a concern is closed. The concern itself and the audit log are always kept.
+|
+|   php artisan attachments:purge --dry-run
+*/
+Artisan::command('attachments:purge {--dry-run : Only count what would be deleted}', function (AttachmentStore $store) {
+    $expired = fn () => Attachment::whereHas('concern', fn ($query) => $query
+        ->whereIn('status', ['Resolved', 'Rejected'])
+        ->where('updated_at', '<', now()->subYear()));
+
+    if ($this->option('dry-run')) {
+        $this->info($expired()->count().' attachment(s) would be deleted.');
+
+        return 0;
+    }
+
+    $deleted = 0;
+    while (($batch = $expired()->orderBy('id')->limit(200)->get(['id', 'path']))->isNotEmpty()) {
+        // The row goes first: if this fails, the encrypted file is still there.
+        DB::connection(config('security.retention_connection'))
+            ->table('attachments')
+            ->whereIn('id', $batch->pluck('id'))
+            ->delete();
+        $store->delete($batch->pluck('path')->all());
+        $deleted += $batch->count();
+    }
+
+    if ($deleted > 0) {
+        SecurityLog::event('attachments_purged', ['count' => $deleted]);
+    }
+    $this->info("{$deleted} attachment(s) deleted.");
+})->purpose('Delete attachments one year after a concern is closed');
+
+Schedule::command('attachments:purge')->dailyAt('02:00');

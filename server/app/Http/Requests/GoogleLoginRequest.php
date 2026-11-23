@@ -11,6 +11,8 @@ class GoogleLoginRequest extends FormRequest
         return [
             // A JWT: three base64url parts separated by dots.
             'id_token' => ['required', 'string', 'max:4096', 'regex:/^[\w-]+\.[\w-]+\.[\w-]+$/'],
+            // Required by the controller only when this creates a new account.
+            'privacy_consent' => ['sometimes', 'boolean'],
         ];
     }
 }
