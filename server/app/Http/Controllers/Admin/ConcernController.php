@@ -41,14 +41,9 @@ class ConcernController extends Controller
             ->get();
 
         // Dashboard totals cover every record, whatever filter is selected.
-        $byStatus = Concern::query()
-            ->select('status')
-            ->selectRaw('COUNT(*) as total')
-            ->groupBy('status')
-            ->pluck('total', 'status');
         $counts = [];
         foreach (Concern::STATUSES as $status) {
-            $counts[$status] = (int) ($byStatus[$status] ?? 0);
+            $counts[$status] = Concern::where('status', $status)->count();
         }
 
         return response()->json([

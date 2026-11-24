@@ -20,12 +20,15 @@ const _sections = [
   (
     "Who is responsible",
     "The barangay is the personal information controller. Railway, which "
-        "hosts this system, is the personal information processor.",
+        "hosts this system, and Resend, which delivers verification emails, "
+        "are personal information processors.",
   ),
   (
     "Where your data is stored",
-    "Your data is hosted in Singapore, outside the Philippines. The barangay "
-        "remains accountable for it under section 21 of the Act.",
+    "Your data is hosted in Singapore, outside the Philippines. Your email "
+        "address and verification code may also be processed abroad to deliver "
+        "your email. The barangay remains accountable for this data under "
+        "section 21 of the Act.",
   ),
   (
     "How we protect it",

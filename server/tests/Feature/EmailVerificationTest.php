@@ -6,6 +6,8 @@ use App\Mail\VerificationCodeMail;
 use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Mail\MailManager;
+use Illuminate\Mail\Transport\ResendTransport;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -118,6 +120,15 @@ class EmailVerificationTest extends TestCase
             $this->verify($first)->assertStatus(422);
         }
         $this->verify($second)->assertOk();
+    }
+
+    public function test_production_mailer_uses_the_resend_https_api(): void
+    {
+        config(['services.resend.key' => 're_test_not_a_real_key']);
+
+        $transport = (new MailManager($this->app))->mailer('resend')->getSymfonyTransport();
+
+        $this->assertInstanceOf(ResendTransport::class, $transport);
     }
 
     public function test_code_is_not_in_the_email_subject(): void

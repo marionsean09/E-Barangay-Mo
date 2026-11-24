@@ -141,10 +141,18 @@ the app needs no `API_URL`.
    ALLOWED_ORIGINS=https://<your-domain>
    FORCE_HTTPS=true
    RUN_MIGRATIONS=true
+   GOOGLE_CLIENT_ID=...          # public OAuth client ID, also used at build time
+   MAIL_MAILER=resend
+   RESEND_API_KEY=re_...
+   MAIL_FROM_ADDRESS=no-reply@<your-verified-domain>
+   MAIL_FROM_NAME="eBarangay Mo"
    ```
 
 6. Leave the MySQL service's public TCP proxy **disabled**, so only the app can reach it.
-7. Optional: put Cloudflare in front of a custom domain for WAF and DDoS protection.
+7. Verify your sending domain at [resend.com/domains](https://resend.com/domains).
+   Railway blocks SMTP below the Pro plan, so Gmail SMTP is for local development only.
+   Without a verified domain, Resend only delivers to the Resend account owner's address.
+8. Optional: put Cloudflare in front of a custom domain for WAF and DDoS protection.
 
 ## Project layout
 

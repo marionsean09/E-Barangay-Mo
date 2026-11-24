@@ -102,7 +102,7 @@ class NotificationController extends Controller
             ->where('status', 'Pending')
             ->whereNull('updated_by')
             ->whereNotIn('id', $withUnreadReplies)
-            ->whereNotExists(fn ($query) => $query->selectRaw('1')
+            ->whereNotExists(fn ($query) => $query->select('m.id')
                 ->from('concern_messages as m')
                 ->whereColumn('m.concern_id', 'concerns.id')
                 ->where('m.sender_role', 'admin'))
