@@ -267,7 +267,9 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
           note: _note(row.data),
           noteMuted: row.data['type'] == 'Complaint' ||
               (row.data['type'] == 'Blotter' &&
-                  parseDate(row.data['finalDate']) == null),
+                  parseDate(row.data['finalDate']) == null) ||
+              (row.data['type'] == 'Request' &&
+                  parseDate(row.data['claimDate']) == null),
           trailing: Padding(
             padding: const EdgeInsets.only(left: AppSpace.s2, top: AppSpace.s1),
             child: Icon(PhosphorIconsRegular.caretRight,
@@ -296,7 +298,12 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
           : "You asked for ${formatLongDate(requested)}. Waiting for confirmation.";
     }
     final date = parseDate(data['claimDate']);
-    if (date == null) return null;
+    if (date == null) {
+      final preferred = parseDate(data['requestedDate']);
+      return preferred == null
+          ? null
+          : "You asked to claim on ${formatLongDate(preferred)}. Waiting for confirmation.";
+    }
     return "Claim on ${formatLongDate(date)} at the barangay hall";
   }
 }

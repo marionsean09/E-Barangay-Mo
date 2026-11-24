@@ -6,6 +6,7 @@ use App\Mail\VerificationCodeMail;
 use App\Models\User;
 use App\Support\SecurityLog;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Throwable;
 
 /**
@@ -13,7 +14,8 @@ use Throwable;
  *
  *  - Only a keyed hash of the code is stored, so a database leak reveals nothing usable.
  *  - A code expires after 10 minutes and allows 5 wrong guesses, then a new one is needed.
- *  - A new code can be sent at most once per minute per account.
+ *  - A new code can be sent at most once per minute per account,
+ *    and at most 5 times per hour per email across sign-up, login and resend.
  */
 class EmailVerification
 {
@@ -22,6 +24,8 @@ class EmailVerification
     public const MAX_ATTEMPTS = 5;
 
     public const RESEND_COOLDOWN_SECONDS = 60;
+
+    public const MAX_EMAILS_PER_HOUR = 5;
 
     /** Seconds until another code may be sent (0 = now). */
     public function cooldownRemaining(User $user): int
@@ -35,10 +39,20 @@ class EmailVerification
         return max(0, (int) ceil(now()->diffInSeconds($readyAt, false)));
     }
 
-    /** Generates and emails a new code, unless one was sent in the last minute. Returns true if sent. */
+    /** Seconds until this inbox may receive another code (0 = now). Protects people from email flooding. */
+    public function hourlyWait(string $email): int
+    {
+        $key = $this->inboxKey($email);
+
+        return RateLimiter::tooManyAttempts($key, self::MAX_EMAILS_PER_HOUR)
+            ? max(1, RateLimiter::availableIn($key))
+            : 0;
+    }
+
+    /** Generates and emails a new code, unless a limit applies. Returns true if sent. */
     public function send(User $user): bool
     {
-        if ($this->cooldownRemaining($user) > 0) {
+        if ($this->cooldownRemaining($user) > 0 || $this->hourlyWait($user->email) > 0) {
             return false;
         }
 
@@ -59,6 +73,9 @@ class EmailVerification
 
             throw $e;
         }
+
+        // Counted only after delivery, so a mail outage doesn't use up the limit.
+        RateLimiter::hit($this->inboxKey($user->email), 3600);
 
         SecurityLog::event('verification_code_sent', ['email' => SecurityLog::maskEmail($user->email)], $user->id);
 
@@ -102,6 +119,11 @@ class EmailVerification
         SecurityLog::event('email_verified', [], $user->id);
 
         return true;
+    }
+
+    private function inboxKey(string $email): string
+    {
+        return 'verification-inbox:'.hash('sha256', strtolower($email));
     }
 
     private function hash(string $code): string

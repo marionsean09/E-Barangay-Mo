@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\ForceHttps;
 use App\Http\Middleware\SecurityHeaders;
 use App\Support\SecurityLog;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -43,6 +44,18 @@ return Application::configure(basePath: dirname(__DIR__))
             SecurityLog::event('permission_denied', ['method' => $request->method()]);
 
             return null;
+        });
+
+        // Database offline: a clear message, with no SQL or connection details.
+        // The full error is still written to the server log.
+        $exceptions->render(function (QueryException $e, Request $request) {
+            if (! str_contains($e->getMessage(), '[2002]')) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => 'The service is temporarily unavailable. Please try again in a few minutes.',
+            ], 503);
         });
 
         $exceptions->render(function (ThrottleRequestsException $e, Request $request) {

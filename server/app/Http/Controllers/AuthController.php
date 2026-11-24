@@ -36,6 +36,11 @@ class AuthController extends Controller
         $data = $request->validated();
         $email = strtolower($data['email']);
 
+        // Checked before saving, so a blocked attempt can't replace a pending password.
+        if ($wait = $this->verification->hourlyWait($email)) {
+            return $this->tooManyCodes($wait);
+        }
+
         // The validator already rejected verified emails, so any match here is
         // an unfinished sign-up. It is replaced: the old code stops working
         // with the old password, so whoever proves the inbox sets the password.
@@ -245,9 +250,23 @@ class AuthController extends Controller
         return mb_substr($clean !== '' ? $clean : 'Resident', 0, 100);
     }
 
+    private function tooManyCodes(int $wait): JsonResponse
+    {
+        return response()->json(['message' => 'Too many codes were sent to this email. Please try again later.'], 429)
+            ->header('Retry-After', (string) $wait);
+    }
+
     /** Sends a code. Returns an error response only if the email couldn't be sent. */
     private function sendCode(User $user): ?JsonResponse
     {
+        // During the 1-minute cooldown the latest code is still valid and on its way.
+        if ($this->verification->cooldownRemaining($user) === 0
+            && ($wait = $this->verification->hourlyWait($user->email))) {
+            SecurityLog::event('verification_email_limited', ['email' => SecurityLog::maskEmail($user->email)], $user->id);
+
+            return $this->tooManyCodes($wait);
+        }
+
         try {
             $this->verification->send($user);
         } catch (Throwable $e) {

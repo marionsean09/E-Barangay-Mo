@@ -31,6 +31,13 @@ class EmailNotVerifiedException extends ApiException {
 /// A file to upload: the bytes plus the filename sent in the multipart form.
 typedef UploadFile = ({Uint8List bytes, String filename});
 
+/// One admin list: the matching records, their total, and overall status counts.
+typedef AdminConcerns = ({
+  List<Concern> concerns,
+  Map<String, int> counts,
+  int total,
+});
+
 /// Talks to the Laravel API. The only thing the app knows is the API's URL:
 /// no database credentials, API keys or secrets exist in the Flutter bundle.
 class ApiService {
@@ -164,8 +171,24 @@ class ApiService {
   static Future<List<Concern>> myConcerns() async =>
       _concerns(await _json('GET', 'concerns'));
 
-  static Future<List<Concern>> allConcerns() async =>
-      _concerns(await _json('GET', 'admin/concerns'));
+  /// Admin only. The server sorts and filters, so results cover all records.
+  static Future<AdminConcerns> adminConcerns({
+    String sort = 'newest',
+    String? type,
+    String? status,
+  }) async {
+    final query = Uri(queryParameters: {
+      'sort': sort,
+      'type': ?type,
+      'status': ?status,
+    }).query;
+    final body = await _json('GET', 'admin/concerns?$query');
+    return (
+      concerns: _concerns(body),
+      counts: (body['counts'] as Map<String, dynamic>).cast<String, int>(),
+      total: body['total'] as int,
+    );
+  }
 
   static Future<Concern> submitConcern({
     required Map<String, String> fields,
@@ -296,9 +319,14 @@ class ApiService {
     }
 
     if (response.statusCode == 429) {
-      final wait = response.headers['retry-after'];
-      throw ApiException(429,
-          "Too many attempts. Try again${wait == null ? ' later' : ' in $wait seconds'}.");
+      final seconds = int.tryParse(response.headers['retry-after'] ?? '');
+      final minutes = seconds == null ? 0 : (seconds / 60).ceil();
+      final when = seconds == null
+          ? 'later'
+          : seconds < 60
+              ? 'in $seconds seconds'
+              : 'in $minutes minute${minutes == 1 ? '' : 's'}';
+      throw ApiException(429, "Too many attempts. Try again $when.");
     }
 
     // Laravel validation errors: {"message": ..., "errors": {"field": ["..."]}}

@@ -17,13 +17,14 @@ class ConcernController extends Controller
     {
         // user_id comes from the verified token, never from the request, so
         // a resident can't list someone else's concerns.
-        $concerns = Concern::with('attachments')
+        $concerns = Concern::with(['attachments', 'user'])
             ->where('user_id', $request->user()->id)
             ->latest()
             ->limit(50)
             ->get();
 
-        return response()->json(['concerns' => $concerns->map->toApi()]);
+        // The requester here is always the logged-in resident (shown on their receipt).
+        return response()->json(['concerns' => $concerns->map->toApi(true)]);
     }
 
     public function store(StoreConcernRequest $request, AttachmentStore $store): JsonResponse
@@ -39,6 +40,7 @@ class ConcernController extends Controller
                 'description' => $data['purpose'],
                 'purpose' => $data['purpose'],
                 'request_type' => $data['request_type'],
+                'requested_date' => $data['requested_date'],
             ],
             'Blotter' => [
                 'title' => 'Blotter: '.$data['blotter_category'],

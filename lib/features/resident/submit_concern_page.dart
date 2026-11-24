@@ -113,7 +113,7 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
       initialDate: requestedDate ?? first,
       firstDate: first,
       lastDate: today.add(const Duration(days: 90)),
-      helpText: "Requested date",
+      helpText: isRequest ? "Preferred claiming date" : "Requested date",
       confirmText: "Choose",
       selectableDayPredicate: (day) => day.weekday <= DateTime.friday,
     );
@@ -136,6 +136,10 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
       }
       if (purpose.text.trim().isEmpty) {
         showMessage("Please enter the purpose of your request");
+        return;
+      }
+      if (requestedDate == null) {
+        showMessage("Please choose your preferred claiming date");
         return;
       }
     } else if (isBlotter) {
@@ -166,6 +170,7 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
           if (isRequest) ...{
             'request_type': requestType,
             'purpose': purpose.text.trim(),
+            'requested_date': apiDate(requestedDate!),
           } else if (isBlotter) ...{
             'blotter_category': blotterCategory,
             'description': description.text.trim(),
@@ -190,7 +195,7 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
       if (!mounted) return;
       showMessage(
         isRequest
-            ? "Request sent. We'll post your claiming date here."
+            ? "Request sent. The barangay will confirm your claiming date."
             : isBlotter
             ? "Blotter report sent. The barangay will confirm your date."
             : "Report sent to the barangay.",
@@ -318,10 +323,37 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
     );
   }
 
-  List<Widget> blotterFields() {
+  Widget requestedDateField({
+    required String label,
+    required String helper,
+  }) {
     final c = context.colors;
     final text = Theme.of(context).textTheme;
     final date = requestedDate;
+
+    return InkWell(
+      onTap: isSubmitting ? null : pickRequestedDate,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: helper,
+          helperMaxLines: 2,
+          prefixIcon: const Icon(PhosphorIconsRegular.calendarBlank),
+        ),
+        child: Text(
+          date == null ? "Choose a weekday" : formatLongDate(date),
+          style: text.bodyLarge?.copyWith(
+            color: date == null ? c.inkMuted : c.ink,
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> blotterFields() {
+    final c = context.colors;
+    final text = Theme.of(context).textTheme;
 
     return [
       DropdownButtonFormField(
@@ -347,22 +379,9 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
         ),
       ),
       const SizedBox(height: AppSpace.s4),
-      InkWell(
-        onTap: isSubmitting ? null : pickRequestedDate,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        child: InputDecorator(
-          decoration: const InputDecoration(
-            labelText: "Requested date",
-            helperText: "The barangay will confirm this date or set another one.",
-            prefixIcon: Icon(PhosphorIconsRegular.calendarBlank),
-          ),
-          child: Text(
-            date == null ? "Choose a weekday" : formatLongDate(date),
-            style: text.bodyLarge?.copyWith(
-              color: date == null ? c.inkMuted : c.ink,
-            ),
-          ),
-        ),
+      requestedDateField(
+        label: "Requested date",
+        helper: "The barangay will confirm this date or set another one.",
       ),
       const SizedBox(height: AppSpace.s6),
       Text("Photos (optional)", style: text.titleMedium),
@@ -584,6 +603,12 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
                             "e.g. Employment, school requirement, bank account",
                         alignLabelWithHint: true,
                       ),
+                    ),
+                    const SizedBox(height: AppSpace.s4),
+                    requestedDateField(
+                      label: "Preferred claiming date",
+                      helper:
+                          "The barangay will confirm this date or set another one.",
                     ),
                     const SizedBox(height: AppSpace.s6),
 

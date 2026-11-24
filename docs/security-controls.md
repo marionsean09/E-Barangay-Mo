@@ -8,7 +8,7 @@ the running app are still needed for the demo parts.
 ## A. Frontend
 
 | Control | Implementation | Evidence |
-|---|---|---|
+| --- | --- | --- |
 | XSS prevention | Flutter paints text on a canvas and never parses API data as HTML. The API only returns JSON with `X-Content-Type-Options: nosniff` and `CSP: default-src 'none'`. | `ConcernSecurityTest::test_xss_payload_is_stored_as_plain_text_and_served_as_json`. Demo: submit `<img src=x onerror=alert(1)>` as a complaint title and it shows as plain text. |
 | CSRF | API calls authenticate with the `Authorization` header, which cross-site pages can't set. The two cookie endpoints (`/api/auth/refresh`, `/api/auth/logout`) have a SameSite=Strict cookie, an Origin allowlist and a required `X-Requested-With` header. See `server/app/Http/Middleware/VerifyOrigin.php`. | `AuthSecurityTest::test_cookie_endpoints_reject_cross_site_requests` |
 | Clickjacking | `X-Frame-Options: DENY` + `frame-ancestors 'none'` (`SecurityHeaders.php`, `public/.htaccess`) | `test_security_headers_are_present`, plus the browser DevTools Network tab |
@@ -18,11 +18,11 @@ the running app are still needed for the demo parts.
 ## B. Middleware / API
 
 | Control | Implementation | Evidence |
-|---|---|---|
+| --- | --- | --- |
 | Access + refresh tokens | Access token: 15-minute Sanctum token held in memory (`lib/core/services/api_service.dart`). Refresh token: 7 days, httpOnly + Secure + SameSite=Strict cookie, SHA-256 stored. Rotation on every use, and reuse revokes the whole login (`server/app/Services/TokenService.php`). | `test_refresh_token_is_an_httponly_strict_secure_cookie_not_in_json`, `test_access_token_expires_after_fifteen_minutes`, `test_refresh_rotates_the_token_and_detects_reuse`, `test_logout_revokes_the_refresh_token` |
 | RBAC (server-side) | `role:admin` middleware (`EnsureRole.php`) on `/api/admin/*`, plus `ConcernPolicy` per object. `role` is not mass-assignable, and admins are only created with `php artisan user:role`. | `test_resident_cannot_use_admin_endpoints`, `test_resident_cannot_open_another_residents_id_photo`, `test_client_cannot_register_itself_as_admin`, `test_another_resident_cannot_read_or_post` (complaint threads), `test_notifications_and_read_markers_are_private` |
-| Rate limiting | `AppServiceProvider::configureRateLimiting()`: login 5/min per email+IP and 20/min per IP; register 10/h; verify-email 5/min; resend-code 5/h per email; submit 5/min; complaint replies 20/min; API 120/min | `test_login_is_rate_limited_after_five_attempts` |
-| Email verification | Sign-up emails a 6-digit code (`EmailVerification.php`), and no session is issued until it is entered. Only an HMAC of the code is stored. It expires after 10 minutes, and the 5-wrong-guesses limit is enforced inside the UPDATE. Verifying and resending both require the password, so a code alone can't take over an account and nobody can flood another person's inbox. Unverified sign-ups can be redone, so an email can't be squatted. | `EmailVerificationTest` (6 tests) |
+| Rate limiting | `AppServiceProvider::configureRateLimiting()`: login 5/min per email+IP and 20/min per IP; register 10/h; verify-email 5/min; resend-code 5/h per email; verification emails 5/h per inbox on every route; submit 5/min; complaint replies 20/min; API 120/min | `test_login_is_rate_limited_after_five_attempts` |
+| Email verification | Sign-up emails a 6-digit code (`EmailVerification.php`), and no session is issued until it is entered. Only an HMAC of the code is stored. It expires after 10 minutes, and the 5-wrong-guesses limit is enforced inside the UPDATE. The code is kept out of the email subject so it doesn't appear on lock screens. Verifying and resending both require the password, so a code alone can't take over an account. To limit inbox flooding, one address receives at most 1 code per minute and 5 per hour across sign-up, login and resend. Unverified sign-ups can be redone, so an email can't be squatted. | `EmailVerificationTest` (8 tests) |
 | Sign in with Google | The app only forwards Google's ID token. `GoogleIdToken.php` has Google check the signature, then requires the token to be issued by Google, for this app's `GOOGLE_CLIENT_ID` (a token minted for another site is rejected), unexpired, and for a Google-verified email. New accounts are always residents. If the address had an unfinished sign-up, its password is replaced. On the app page only, CSP allows `accounts.google.com/gsi`, with `Referrer-Policy: strict-origin-when-cross-origin` and `COOP: same-origin-allow-popups`, which Google's button requires. API responses keep `no-referrer` and `same-origin`. | `GoogleSignInTest` (6 tests, Google faked with `Http::fake`) |
 | Input validation | One FormRequest per endpoint (`server/app/Http/Requests/`). Uploads are checked by magic bytes (`finfo`), not extension. | `test_non_image_upload_disguised_as_jpg_is_rejected`, `test_invalid_status_is_rejected_by_validation`, `test_request_requires_all_four_documents` |
 | CORS | `config/cors.php`: exact origins from `ALLOWED_ORIGINS`, never `*` | `test_cors_only_allows_the_configured_origin` |
@@ -31,7 +31,7 @@ the running app are still needed for the demo parts.
 ## C. Backend / database
 
 | Control | Implementation | Evidence |
-|---|---|---|
+| --- | --- | --- |
 | Injection | Eloquent / query builder only (bound parameters), with no raw SQL built from user input | `test_sql_injection_payloads_do_not_bypass_login`, `test_invalid_status_is_rejected_by_validation` |
 | Password storage | Argon2id (`HASH_DRIVER=argon2id`) via the `hashed` cast. Unknown emails still run a hash check, so response timing doesn't reveal which accounts exist. | `test_password_is_stored_as_salted_argon2id_hash` |
 | Data integrity | FKs, ENUMs and `CHECK` constraints (`database/migrations`). Transactions for concern + attachments and for admin update + audit row. SHA-256 checksum verified on every file download. | `test_admin_can_view_and_update_and_change_is_audited` |
@@ -44,7 +44,7 @@ the running app are still needed for the demo parts.
 ## D. Bonus hardening
 
 | Item | Status |
-|---|---|
+| --- | --- |
 | Automated dependency scanning in CI | `.github/workflows/security.yml` (composer audit, OSV-Scanner, gitleaks) + `.github/dependabot.yml` |
 | Security headers scan | Run securityheaders.com / Mozilla Observatory on the deployed URL and screenshot the result |
 | MFA, WAF rules | Not implemented. Cloudflare WAF is possible with a custom domain. |

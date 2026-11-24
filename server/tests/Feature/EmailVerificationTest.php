@@ -120,6 +120,39 @@ class EmailVerificationTest extends TestCase
         $this->verify($second)->assertOk();
     }
 
+    public function test_code_is_not_in_the_email_subject(): void
+    {
+        $this->postJson('/api/auth/register', self::ACCOUNT)->assertCreated();
+        $code = $this->codeSentTo('juan@example.com');
+
+        Mail::assertSent(VerificationCodeMail::class, fn ($mail) => ! str_contains($mail->envelope()->subject, $code));
+    }
+
+    public function test_one_inbox_gets_at_most_five_codes_per_hour(): void
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/auth/register', self::ACCOUNT)->assertCreated();
+            $this->travel(61)->seconds();
+        }
+        Mail::assertSentCount(5);
+        $hash = User::first()->password;
+
+        // Blocked on every route, and a blocked sign-up can't replace the password.
+        $this->postJson('/api/auth/register', ['password' => 'Attacker1'] + self::ACCOUNT)
+            ->assertStatus(429)
+            ->assertHeader('Retry-After');
+        $this->postJson('/api/auth/login', ['email' => 'juan@example.com', 'password' => 'Secret123'])
+            ->assertStatus(429);
+        $this->postJson('/api/auth/resend-code', ['email' => 'juan@example.com', 'password' => 'Secret123'])
+            ->assertStatus(429);
+        Mail::assertSentCount(5);
+        $this->assertSame($hash, User::first()->password);
+
+        $this->travel(1)->hours();
+        $this->postJson('/api/auth/resend-code', ['email' => 'juan@example.com', 'password' => 'Secret123'])->assertOk();
+        Mail::assertSentCount(6);
+    }
+
     public function test_unverified_sign_up_can_be_redone_but_a_verified_email_is_taken(): void
     {
         // Someone starts a sign-up with an address they don't own and never verifies it.

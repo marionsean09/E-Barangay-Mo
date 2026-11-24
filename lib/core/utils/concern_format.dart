@@ -16,6 +16,10 @@ List<String> statusesFor(String? type) => type == 'Request'
     ? concernStatuses
     : concernStatuses.where((s) => s != readyForPickup).toList();
 
+/// Resolved and rejected concerns are final. The server enforces this too.
+bool isClosedStatus(String? status) =>
+    status == 'Resolved' || status == 'Rejected';
+
 const _months = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',

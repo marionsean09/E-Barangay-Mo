@@ -22,8 +22,8 @@ class UpdateConcernRequest extends FormRequest
                     }
                 },
             ],
-            'final_date' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
-            'claim_date' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'final_date' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:'.Concern::today()->toDateString()],
+            'claim_date' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:'.Concern::today()->toDateString()],
         ];
     }
 }

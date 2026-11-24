@@ -31,8 +31,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
   List<Concern> concerns = [];
   bool isLoading = true;
   String? loadError;
+  Map<String, int> counts = {};
+  int total = 0;
   String filter = 'All';
+  String typeFilter = 'All';
+  String sort = 'newest';
   Timer? poller;
+  int _loadId = 0;
+
+  static const _typeLabels = {
+    'All': 'All types',
+    'Request': 'Documents',
+    'Blotter': 'Blotter',
+    'Complaint': 'Complaints',
+    'Suggestion': 'Suggestions',
+  };
 
   @override
   void initState() {
@@ -49,22 +62,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> loadConcerns() async {
+    // Only the latest request may update the list if filters change quickly.
+    final id = ++_loadId;
     try {
       // Admin-only endpoint: a resident's token gets 403 here.
-      final result = await ApiService.allConcerns();
-      if (!mounted) return;
+      final result = await ApiService.adminConcerns(
+        sort: sort,
+        type: typeFilter == 'All' ? null : typeFilter,
+        status: filter == 'All' ? null : filter,
+      );
+      if (!mounted || id != _loadId) return;
       setState(() {
-        concerns = result;
+        concerns = result.concerns;
+        counts = result.counts;
+        total = result.total;
         isLoading = false;
         loadError = null;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || id != _loadId) return;
       setState(() {
         isLoading = false;
         loadError = e.message;
       });
     }
+  }
+
+  void updateView(VoidCallback change) {
+    setState(() {
+      change();
+      isLoading = true;
+    });
+    loadConcerns();
   }
 
   Future<void> openDetail(Concern row) async {
@@ -75,8 +104,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (changed == true) loadConcerns();
   }
 
-  int count(String status) =>
-      concerns.where((r) => (r.data['status'] ?? 'Pending') == status).length;
+  int count(String status) => counts[status] ?? 0;
 
   static const _overlap = 40.0;
 
@@ -86,11 +114,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final text = Theme.of(context).textTheme;
     final name = firstName(user.name);
     final pending = count('Pending');
-    final visible = filter == 'All'
-        ? concerns
-        : concerns
-            .where((r) => (r.data['status'] ?? 'Pending') == filter)
-            .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -98,7 +121,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         titleSpacing: AppSpace.s4,
         title: const BrandLockup(height: 32, onHero: true),
         actions: [
-          NotificationBell(onOpen: openDetail),
+          NotificationBell(onOpen: openDetail, onNewSubmission: loadConcerns),
           IconButton(
             icon: const Icon(PhosphorIconsRegular.arrowClockwise),
             tooltip: "Refresh",
@@ -129,7 +152,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        isLoading ? "-" : "$pending",
+                        isLoading && counts.isEmpty ? "-" : "$pending",
                         style: text.headlineMedium?.copyWith(
                           color: c.onHero,
                           fontSize: 64,
@@ -144,8 +167,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           pending == 1
                               ? "concern waiting\nfor review"
                               : "concerns waiting\nfor review",
-                          style: text.bodyLarge
-                              ?.copyWith(color: c.onHeroMuted, height: 1.3),
+                          style: text.bodyLarge?.copyWith(
+                            color: c.onHeroMuted,
+                            height: 1.3,
+                          ),
                         ),
                       ),
                     ],
@@ -170,23 +195,71 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           rejected: count('Rejected'),
                         ),
                       ),
-                      Text("All concerns", style: text.titleLarge),
-                      const SizedBox(height: AppSpace.s3),
                       Wrap(
-                        spacing: AppSpace.s2,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: AppSpace.s3,
                         runSpacing: AppSpace.s2,
                         children: [
-                          for (final f in ['All', ...concernStatuses])
-                            ChoiceChip(
-                              label: Text(f),
-                              selected: filter == f,
-                              showCheckmark: false,
-                              onSelected: (_) => setState(() => filter = f),
-                            ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Records", style: text.titleLarge),
+                              Text(
+                                isLoading
+                                    ? "Loading records"
+                                    : total > concerns.length
+                                    ? "Showing ${concerns.length} of $total"
+                                    : "$total ${total == 1 ? 'record' : 'records'}",
+                                style: text.bodySmall,
+                              ),
+                            ],
+                          ),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: AppSpace.s2,
+                            runSpacing: AppSpace.s2,
+                            children: [
+                              _FilterMenu(
+                                label: "Type",
+                                value: typeFilter,
+                                options: _typeLabels,
+                                onSelected: (value) =>
+                                    updateView(() => typeFilter = value),
+                              ),
+                              _FilterMenu(
+                                label: "Status",
+                                value: filter,
+                                options: {
+                                  'All': 'All statuses',
+                                  for (final s in concernStatuses) s: s,
+                                },
+                                onSelected: (value) =>
+                                    updateView(() => filter = value),
+                              ),
+                              SegmentedButton<String>(
+                                showSelectedIcon: false,
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'newest',
+                                    label: Text("Newest"),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'oldest',
+                                    label: Text("Oldest"),
+                                  ),
+                                ],
+                                selected: {sort},
+                                onSelectionChanged: (selection) =>
+                                    updateView(() => sort = selection.first),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: AppSpace.s4),
-                      ..._list(visible),
+                      ..._list(concerns),
                       const SizedBox(height: AppSpace.s8),
                     ],
                   ),
@@ -219,8 +292,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
             Icon(PhosphorIconsRegular.warning, color: c.danger),
             const SizedBox(width: AppSpace.s2),
             Expanded(
-              child: Text(loadError!,
-                  style: text.bodyMedium?.copyWith(color: c.danger)),
+              child: Text(
+                loadError!,
+                style: text.bodyMedium?.copyWith(color: c.danger),
+              ),
             ),
             TextButton(onPressed: loadConcerns, child: const Text("Retry")),
           ],
@@ -237,12 +312,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
               Icon(PhosphorIconsRegular.tray, size: 40, color: c.inkMuted),
               const SizedBox(height: AppSpace.s3),
               Text(
-                filter == 'All' ? "No concerns yet" : "Nothing marked $filter",
+                filter == 'All' && typeFilter == 'All'
+                    ? "No concerns yet"
+                    : "No records match these filters",
                 style: text.titleMedium,
               ),
               const SizedBox(height: AppSpace.s1),
               Text(
-                "New requests and reports from residents appear here.",
+                filter == 'All' && typeFilter == 'All'
+                    ? "New requests and reports from residents appear here."
+                    : "Try another type or status.",
                 style: text.bodySmall,
               ),
             ],
@@ -255,14 +334,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
       for (final row in rows) ...[
         ServiceCard(
           icon: typeIcon(row.data['type']),
-          title: row.data['title'] ?? '',
+          title: (row.data['requester'] as Map?)?['fullName'] ?? 'Resident',
           meta:
-              "Ref. ${referenceFor(row)}, filed ${formatDate(parseDate(row.createdAt) ?? DateTime.now())}",
+              "${row.data['title'] ?? ''}\nRef. ${referenceFor(row)}, filed ${formatDateTime(parseDate(row.createdAt) ?? DateTime.now())}",
           status: row.data['status'] ?? 'Pending',
           statusLabel: statusLabel(row.data),
           note: _note(row.data),
-          noteMuted: row.data['type'] == 'Blotter' &&
-              parseDate(row.data['finalDate']) == null,
+          noteMuted:
+              (row.data['type'] == 'Blotter' &&
+                  parseDate(row.data['finalDate']) == null) ||
+              (row.data['type'] == 'Request' &&
+                  parseDate(row.data['claimDate']) == null),
           onTap: () => openDetail(row),
         ),
         const SizedBox(height: AppSpace.s3),
@@ -281,7 +363,86 @@ String? _note(Map<String, dynamic> data) {
         : "Requested ${formatLongDate(requested)}. Needs a final date.";
   }
   final claim = parseDate(data['claimDate']);
-  return claim == null ? null : "Claim on ${formatLongDate(claim)}";
+  if (claim != null) return "Claim on ${formatLongDate(claim)}";
+  if (data['type'] != 'Request') return null;
+  final preferred = parseDate(data['requestedDate']);
+  return preferred == null
+      ? null
+      : "Prefers ${formatLongDate(preferred)}. Needs a claiming date.";
+}
+
+/// A compact dropdown sized and outlined like the Newest/Oldest control.
+class _FilterMenu extends StatelessWidget {
+  const _FilterMenu({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onSelected,
+  });
+
+  final String label;
+  final String value;
+  final Map<String, String> options;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final text = Theme.of(context).textTheme;
+    final isActive = value != 'All';
+    final color = isActive ? c.primary : c.ink;
+
+    return Material(
+      color: isActive ? c.primarySoft : Colors.transparent,
+      clipBehavior: Clip.antiAlias,
+      shape: StadiumBorder(side: BorderSide(color: c.inkMuted)),
+      child: PopupMenuButton<String>(
+        tooltip: "Filter by ${label.toLowerCase()}",
+        initialValue: value,
+        position: PopupMenuPosition.under,
+        onSelected: (next) {
+          if (next != value) onSelected(next);
+        },
+        itemBuilder: (_) => [
+          for (final entry in options.entries)
+            PopupMenuItem(
+              value: entry.key,
+              child: Text(
+                entry.value,
+                style: text.bodyMedium?.copyWith(
+                  color: entry.key == value ? c.primary : c.ink,
+                  fontWeight: entry.key == value
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                ),
+              ),
+            ),
+        ],
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.only(left: AppSpace.s4, right: AppSpace.s3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isActive ? options[value]! : label,
+                style: text.labelLarge?.copyWith(color: color),
+              ),
+              const SizedBox(width: AppSpace.s1),
+              RotatedBox(
+                quarterTurns: 1,
+                child: Icon(
+                  PhosphorIconsRegular.caretRight,
+                  size: 14,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _StatCard extends StatelessWidget {
@@ -303,32 +464,34 @@ class _StatCard extends StatelessWidget {
     final text = Theme.of(context).textTheme;
 
     Widget cell(String status, int value) => Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpace.s4, vertical: AppSpace.s4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("$value", style: text.headlineMedium?.copyWith(height: 1)),
-                const SizedBox(height: AppSpace.s2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: StatusPill(status),
-                ),
-              ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.s4,
+          vertical: AppSpace.s4,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("$value", style: text.headlineMedium?.copyWith(height: 1)),
+            const SizedBox(height: AppSpace.s2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: StatusPill(status),
             ),
-          ),
-        );
+          ],
+        ),
+      ),
+    );
 
     Widget divider() => VerticalDivider(width: 1, color: c.border);
 
     Widget row(List<Widget> cells) => IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: cells,
-          ),
-        );
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: cells,
+      ),
+    );
 
     return Container(
       decoration: BoxDecoration(

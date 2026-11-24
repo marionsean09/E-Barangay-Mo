@@ -43,8 +43,10 @@ class StoreConcernRequest extends FormRequest
             'purpose' => ['exclude_unless:type,Request', 'required', 'string', 'max:500'],
             'blotter_category' => ['exclude_unless:type,Blotter', 'required', Rule::in(Concern::BLOTTER_CATEGORIES)],
             'requested_date' => [
-                'exclude_unless:type,Blotter', 'bail', 'required', 'date_format:Y-m-d',
-                'after:today', 'before_or_equal:'.now()->addDays(90)->toDateString(),
+                // Blotter: preferred schedule. Request: preferred claiming date.
+                'exclude_unless:type,Blotter,Request', 'bail', 'required', 'date_format:Y-m-d',
+                'after:'.Concern::today()->toDateString(),
+                'before_or_equal:'.Concern::today()->addDays(90)->toDateString(),
                 function (string $attribute, mixed $value, Closure $fail) {
                     if (CarbonImmutable::createFromFormat('Y-m-d', $value)?->isWeekend()) {
                         $fail('The requested date must be a weekday.');

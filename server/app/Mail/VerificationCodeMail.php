@@ -16,7 +16,8 @@ class VerificationCodeMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: "Your eBarangay Mo verification code: {$this->code}");
+        // The code stays out of the subject, which phones show on the lock screen.
+        return new Envelope(subject: 'Your eBarangay Mo verification code');
     }
 
     public function content(): Content

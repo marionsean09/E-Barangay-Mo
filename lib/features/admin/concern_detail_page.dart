@@ -9,6 +9,7 @@ import 'package:e_barangay_mo/core/theme/app_tokens.dart';
 import 'package:e_barangay_mo/core/utils/concern_format.dart';
 import 'package:e_barangay_mo/core/widgets/app_card.dart';
 import 'package:e_barangay_mo/core/widgets/concern_photos.dart';
+import 'package:e_barangay_mo/core/widgets/concern_receipt.dart';
 import 'package:e_barangay_mo/core/widgets/concern_thread.dart';
 import 'package:e_barangay_mo/core/widgets/press_scale.dart';
 import 'package:e_barangay_mo/core/widgets/status_pill.dart';
@@ -31,6 +32,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
 
   bool get isRequest => data['type'] == 'Request';
   bool get isBlotter => data['type'] == 'Blotter';
+  bool get isClosed => isClosedStatus(data['status']);
   DateTime? get requestedDate => parseDate(data['requestedDate']);
   DateTime? get finalDate => parseDate(data['finalDate']);
 
@@ -46,6 +48,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
       for (var i = 0; i < evidence.length; i++) ("Photo ${i + 1}", evidence[i]),
     ];
   }
+
   DateTime? get claimDate => parseDate(data['claimDate']);
 
   /// [update] keys: status, final_date, claim_date. The server validates
@@ -60,22 +63,58 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
         data = Map.of(saved.data);
         changed = true;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => isSaving = false);
     }
   }
 
+  /// Resolving or rejecting is permanent, so it asks first.
+  Future<void> changeStatus(String next) async {
+    if (isClosedStatus(next)) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text("Mark as ${next.toLowerCase()}?"),
+          content: const Text(
+            "This is final. Its status, dates and replies can no longer be changed.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text("Mark as ${next.toLowerCase()}"),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    await save({'status': next}, "Marked as $next");
+  }
+
   Future<void> pickClaimDate() async {
     final today = DateUtils.dateOnly(DateTime.now());
+    // The picker requires a selectable start day: not past, not a weekend.
+    var initial =
+        claimDate ?? requestedDate ?? today.add(const Duration(days: 1));
+    if (initial.isBefore(today)) initial = today;
+    while (initial.weekday > DateTime.friday) {
+      initial = initial.add(const Duration(days: 1));
+    }
     final picked = await showDatePicker(
       context: context,
-      initialDate: claimDate ?? today.add(const Duration(days: 1)),
+      initialDate: initial,
       firstDate: today,
       lastDate: today.add(const Duration(days: 180)),
       helpText: "Claiming date",
@@ -84,10 +123,14 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
     );
     if (picked == null) return;
 
-    await save(
-      {'claim_date': apiDate(picked), 'status': readyForPickup},
+    await setClaimDate(
+      picked,
       "Claiming date set to ${formatLongDate(picked)}",
     );
+  }
+
+  Future<void> setClaimDate(DateTime day, String message) async {
+    await save({'claim_date': apiDate(day), 'status': readyForPickup}, message);
   }
 
   Future<void> setFinalDate(DateTime day, String message) async {
@@ -141,8 +184,10 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(data['title'] ?? '',
-                            style: text.headlineMedium),
+                        child: Text(
+                          data['title'] ?? '',
+                          style: text.headlineMedium,
+                        ),
                       ),
                       const SizedBox(width: AppSpace.s3),
                       Padding(
@@ -157,6 +202,14 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                     style: text.bodySmall,
                   ),
                   const SizedBox(height: AppSpace.s6),
+                  ConcernReceipt(
+                    concern: Concern(
+                      id: widget.row.id,
+                      createdAt: widget.row.createdAt,
+                      data: data,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.s4),
 
                   if (isRequest) ...[
                     _claimCard(),
@@ -173,12 +226,13 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                            isRequest
-                                ? "Purpose"
-                                : isBlotter
-                                ? "Reason"
-                                : "Details",
-                            style: text.titleMedium),
+                          isRequest
+                              ? "Purpose"
+                              : isBlotter
+                              ? "Reason"
+                              : "Details",
+                          style: text.titleMedium,
+                        ),
                         const SizedBox(height: AppSpace.s2),
                         Text(
                           (isRequest ? data['purpose'] : data['description']) ??
@@ -191,7 +245,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                   const SizedBox(height: AppSpace.s4),
 
                   if (data['type'] == 'Complaint') ...[
-                    ConcernThread(concernId: widget.row.id),
+                    ConcernThread(concernId: widget.row.id, readOnly: isClosed),
                     const SizedBox(height: AppSpace.s4),
                   ],
 
@@ -201,8 +255,10 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(isRequest ? "Requirements" : "Photos",
-                              style: text.titleMedium),
+                          Text(
+                            isRequest ? "Requirements" : "Photos",
+                            style: text.titleMedium,
+                          ),
                           const SizedBox(height: AppSpace.s4),
                           if (photos.isEmpty)
                             Text("No photos attached.", style: text.bodySmall)
@@ -221,22 +277,28 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                       children: [
                         Text("Status", style: text.titleMedium),
                         const SizedBox(height: AppSpace.s3),
-                        Wrap(
-                          spacing: AppSpace.s2,
-                          runSpacing: AppSpace.s2,
-                          children: [
-                            for (final s in statusesFor(data['type']))
-                              ChoiceChip(
-                                label: Text(s),
-                                selected: status == s,
-                                showCheckmark: false,
-                                onSelected: (_) {
-                                  if (isSaving || status == s) return;
-                                  save({'status': s}, "Marked as $s");
-                                },
-                              ),
-                          ],
-                        ),
+                        if (isClosed)
+                          Text(
+                            "${statusLabel(data)}. This record is final and can no longer be changed.",
+                            style: text.bodyMedium,
+                          )
+                        else
+                          Wrap(
+                            spacing: AppSpace.s2,
+                            runSpacing: AppSpace.s2,
+                            children: [
+                              for (final s in statusesFor(data['type']))
+                                ChoiceChip(
+                                  label: Text(s),
+                                  selected: status == s,
+                                  showCheckmark: false,
+                                  onSelected: (_) {
+                                    if (isSaving || status == s) return;
+                                    changeStatus(s);
+                                  },
+                                ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
@@ -262,7 +324,8 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
     final text = Theme.of(context).textTheme;
     final requested = requestedDate;
     final scheduled = finalDate;
-    final canApprove = requested != null &&
+    final canApprove =
+        requested != null &&
         !requested.isBefore(DateUtils.dateOnly(DateTime.now())) &&
         (scheduled == null || !DateUtils.isSameDay(scheduled, requested));
 
@@ -279,13 +342,17 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
             children: [
               Icon(PhosphorIconsRegular.calendarCheck, color: c.primary),
               const SizedBox(width: AppSpace.s2),
-              Text("Blotter schedule",
-                  style: text.titleMedium?.copyWith(color: c.primary)),
+              Text(
+                "Blotter schedule",
+                style: text.titleMedium?.copyWith(color: c.primary),
+              ),
             ],
           ),
           const SizedBox(height: AppSpace.s4),
-          Text("Requested by the resident",
-              style: text.bodySmall?.copyWith(color: c.primary)),
+          Text(
+            "Requested by the resident",
+            style: text.bodySmall?.copyWith(color: c.primary),
+          ),
           Text(
             requested == null ? "No date given" : formatLongDate(requested),
             style: text.titleMedium?.copyWith(color: c.primary),
@@ -298,46 +365,53 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
           ),
           const SizedBox(height: AppSpace.s1),
           Text(
-            scheduled == null
+            isClosed
+                ? "This record is final."
+                : scheduled == null
                 ? "Approve the requested date or set another one. The resident sees the final date on their home screen."
                 : "The resident sees this date on their home screen.",
             style: text.bodyMedium?.copyWith(color: c.primary),
           ),
-          const SizedBox(height: AppSpace.s4),
-          Wrap(
-            spacing: AppSpace.s2,
-            runSpacing: AppSpace.s2,
-            children: [
-              if (canApprove) ...[
-                PressScale(
-                  enabled: !isSaving,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(PhosphorIconsRegular.checkCircle),
-                    label: const Text("Approve requested date"),
-                    onPressed: isSaving
-                        ? null
-                        : () => setFinalDate(requested,
-                            "Approved ${formatLongDate(requested)}"),
+          if (!isClosed) const SizedBox(height: AppSpace.s4),
+          if (!isClosed)
+            Wrap(
+              spacing: AppSpace.s2,
+              runSpacing: AppSpace.s2,
+              children: [
+                if (canApprove) ...[
+                  PressScale(
+                    enabled: !isSaving,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(PhosphorIconsRegular.checkCircle),
+                      label: const Text("Approve requested date"),
+                      onPressed: isSaving
+                          ? null
+                          : () => setFinalDate(
+                              requested,
+                              "Approved ${formatLongDate(requested)}",
+                            ),
+                    ),
                   ),
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(PhosphorIconsRegular.calendarPlus),
-                  label: Text(
-                      scheduled == null ? "Set another date" : "Change date"),
-                  onPressed: isSaving ? null : pickFinalDate,
-                ),
-              ] else
-                PressScale(
-                  enabled: !isSaving,
-                  child: ElevatedButton.icon(
+                  OutlinedButton.icon(
                     icon: const Icon(PhosphorIconsRegular.calendarPlus),
                     label: Text(
-                        scheduled == null ? "Set final date" : "Change date"),
+                      scheduled == null ? "Set another date" : "Change date",
+                    ),
                     onPressed: isSaving ? null : pickFinalDate,
                   ),
-                ),
-            ],
-          ),
+                ] else
+                  PressScale(
+                    enabled: !isSaving,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(PhosphorIconsRegular.calendarPlus),
+                      label: Text(
+                        scheduled == null ? "Set final date" : "Change date",
+                      ),
+                      onPressed: isSaving ? null : pickFinalDate,
+                    ),
+                  ),
+              ],
+            ),
         ],
       ),
     );
@@ -347,6 +421,11 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
     final c = context.colors;
     final text = Theme.of(context).textTheme;
     final date = claimDate;
+    final preferred = requestedDate;
+    final canApprove =
+        preferred != null &&
+        !preferred.isBefore(DateUtils.dateOnly(DateTime.now())) &&
+        (date == null || !DateUtils.isSameDay(date, preferred));
 
     return Container(
       padding: const EdgeInsets.all(AppSpace.s6),
@@ -361,48 +440,88 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
             children: [
               Icon(PhosphorIconsRegular.calendarCheck, color: c.primary),
               const SizedBox(width: AppSpace.s2),
-              Text("Claiming date",
-                  style: text.titleMedium?.copyWith(color: c.primary)),
+              Text(
+                "Claiming date",
+                style: text.titleMedium?.copyWith(color: c.primary),
+              ),
             ],
           ),
+          const SizedBox(height: AppSpace.s4),
+          Text(
+            "Preferred by the resident",
+            style: text.bodySmall?.copyWith(color: c.primary),
+          ),
+          Text(
+            preferred == null ? "No date given" : formatLongDate(preferred),
+            style: text.titleMedium?.copyWith(color: c.primary),
+          ),
           const SizedBox(height: AppSpace.s3),
+          Text(
+            "Claiming date",
+            style: text.bodySmall?.copyWith(color: c.primary),
+          ),
           Text(
             date == null ? "Not set yet" : formatLongDate(date),
             style: text.titleLarge?.copyWith(color: c.primary),
           ),
           const SizedBox(height: AppSpace.s1),
           Text(
-            date == null
-                ? "Pick the day the resident can claim this document. They will see it on their home screen."
+            isClosed
+                ? "This record is final."
+                : date == null
+                ? "Approve the preferred date or set another one. The resident sees the claiming date on their home screen."
                 : "The resident sees this date on their home screen.",
             style: text.bodyMedium?.copyWith(color: c.primary),
           ),
-          const SizedBox(height: AppSpace.s4),
-          Wrap(
-            spacing: AppSpace.s2,
-            runSpacing: AppSpace.s2,
-            children: [
-              PressScale(
-                enabled: !isSaving,
-                child: ElevatedButton.icon(
-                  icon: const Icon(PhosphorIconsRegular.calendarPlus),
-                  label: Text(date == null ? "Set date" : "Change date"),
-                  onPressed: isSaving ? null : pickClaimDate,
-                ),
-              ),
-              if (date != null)
-                OutlinedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () => save({
+          if (!isClosed) const SizedBox(height: AppSpace.s4),
+          if (!isClosed)
+            Wrap(
+              spacing: AppSpace.s2,
+              runSpacing: AppSpace.s2,
+              children: [
+                if (canApprove) ...[
+                  PressScale(
+                    enabled: !isSaving,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(PhosphorIconsRegular.checkCircle),
+                      label: const Text("Approve preferred date"),
+                      onPressed: isSaving
+                          ? null
+                          : () => setClaimDate(
+                              preferred,
+                              "Approved ${formatLongDate(preferred)}",
+                            ),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(PhosphorIconsRegular.calendarPlus),
+                    label: Text(
+                      date == null ? "Set another date" : "Change date",
+                    ),
+                    onPressed: isSaving ? null : pickClaimDate,
+                  ),
+                ] else
+                  PressScale(
+                    enabled: !isSaving,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(PhosphorIconsRegular.calendarPlus),
+                      label: Text(date == null ? "Set date" : "Change date"),
+                      onPressed: isSaving ? null : pickClaimDate,
+                    ),
+                  ),
+                if (date != null)
+                  OutlinedButton(
+                    onPressed: isSaving
+                        ? null
+                        : () => save({
                             'claim_date': null,
                             if (data['status'] == readyForPickup)
                               'status': 'Pending',
                           }, "Claiming date cleared"),
-                  child: const Text("Clear"),
-                ),
-            ],
-          ),
+                    child: const Text("Clear"),
+                  ),
+              ],
+            ),
         ],
       ),
     );

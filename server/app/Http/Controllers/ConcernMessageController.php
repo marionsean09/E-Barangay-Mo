@@ -21,6 +21,7 @@ class ConcernMessageController extends Controller
     {
         Gate::authorize('message', $concern);
 
+        /** @var \Illuminate\Support\Collection<int, ConcernMessage> $messages */
         $messages = ConcernMessage::with('user')
             ->where('concern_id', $concern->id)
             ->orderByDesc('id')
@@ -61,6 +62,11 @@ class ConcernMessageController extends Controller
         $user = $request->user();
 
         $message = DB::transaction(function () use ($request, $concern, $user) {
+            // Row lock: a reply can't land while the complaint is being closed.
+            if (Concern::whereKey($concern->id)->lockForUpdate()->firstOrFail()->isLocked()) {
+                return null;
+            }
+
             $message = new ConcernMessage(['body' => $request->validated('body')]);
             $message->concern_id = $concern->id;
             $message->user_id = $user->id;
@@ -79,6 +85,10 @@ class ConcernMessageController extends Controller
 
             return $message;
         });
+
+        if (! $message) {
+            return response()->json(['message' => 'This complaint is closed. No more replies can be sent.'], 409);
+        }
 
         return response()->json(['message' => $message->setRelation('user', $user)->toApi($user)], 201);
     }

@@ -2,12 +2,22 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Carbon|null $requested_date
+ * @property Carbon|null $final_date
+ * @property Carbon|null $claim_date
+ */
 class Concern extends Model
 {
+    // Calendar dates follow the barangay's day, not the server's UTC clock.
+    public const TIMEZONE = 'Asia/Manila';
+
     public const TYPES = ['Complaint', 'Suggestion', 'Request', 'Blotter'];
 
     public const READY_FOR_PICKUP = 'Ready for Pickup';
@@ -50,6 +60,18 @@ class Concern extends Model
             'final_date' => 'date:Y-m-d',
             'claim_date' => 'date:Y-m-d',
         ];
+    }
+
+    /** Today's date at the barangay. */
+    public static function today(): CarbonImmutable
+    {
+        return CarbonImmutable::now(self::TIMEZONE)->startOfDay();
+    }
+
+    /** A resolved or rejected concern is final: no status, date or reply changes. */
+    public function isLocked(): bool
+    {
+        return in_array($this->status, ['Resolved', 'Rejected'], true);
     }
 
     /** The read marker for this user's side of the conversation. */

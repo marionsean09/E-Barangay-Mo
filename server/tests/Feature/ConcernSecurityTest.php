@@ -6,10 +6,16 @@ use App\Models\Attachment;
 use App\Models\AuditLog;
 use App\Models\Concern;
 use App\Models\User;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use PDOException;
 use Tests\TestCase;
 
 class ConcernSecurityTest extends TestCase
@@ -34,12 +40,20 @@ class ConcernSecurityTest extends TestCase
         return UploadedFile::fake()->createWithContent($name, $bytes);
     }
 
+    private function nextWeekday(): CarbonImmutable
+    {
+        $day = Concern::today()->addDay();
+
+        return $day->isWeekend() ? $day->next('Monday') : $day;
+    }
+
     private function fileRequest(): array
     {
         return [
             'type' => 'Request',
             'request_type' => 'Barangay Clearance',
             'purpose' => 'Employment',
+            'requested_date' => $this->nextWeekday()->toDateString(),
             'validIdFront' => $this->png(),
             'validIdBack' => $this->png(),
             'proofOfAddress' => $this->png(),
@@ -145,6 +159,143 @@ class ConcernSecurityTest extends TestCase
         $this->assertSame('Pending', Concern::find($complaintId)->status);
     }
 
+    public function test_resolved_concern_cannot_be_changed_or_replied_to(): void
+    {
+        $resident = $this->tokenFor('res@example.com');
+        $admin = $this->tokenFor('admin@example.com', 'admin');
+        $id = $this->withToken($resident)->postJson('/api/concerns', [
+            'type' => 'Complaint', 'title' => 'Flooding', 'description' => 'Drainage clogged',
+        ])->json('concern.id');
+        $this->withToken($resident)->postJson("/api/concerns/{$id}/messages", ['body' => 'Before closing'])
+            ->assertCreated();
+
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'Resolved'])->assertOk();
+        $audits = AuditLog::where('action', 'concern_updated')->count();
+
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'Pending'])->assertStatus(409);
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['final_date' => $this->nextWeekday()->toDateString()])
+            ->assertStatus(409);
+        $this->withToken($admin)->postJson("/api/concerns/{$id}/messages", ['body' => 'Admin late'])->assertStatus(409);
+        $this->withToken($resident)->postJson("/api/concerns/{$id}/messages", ['body' => 'Resident late'])->assertStatus(409);
+
+        $this->assertSame('Resolved', Concern::find($id)->status);
+        $this->assertNull(Concern::find($id)->final_date);
+        $this->assertSame($audits, AuditLog::where('action', 'concern_updated')->count());
+
+        // The history stays readable.
+        $this->withToken($resident)->getJson("/api/concerns/{$id}/messages")
+            ->assertOk()
+            ->assertJsonCount(1, 'messages');
+    }
+
+    public function test_rejected_concern_cannot_be_changed_or_replied_to(): void
+    {
+        $resident = $this->tokenFor('res@example.com');
+        $admin = $this->tokenFor('admin@example.com', 'admin');
+        $id = $this->withToken($resident)->postJson('/api/concerns', [
+            'type' => 'Complaint', 'title' => 'Flooding', 'description' => 'Drainage clogged',
+        ])->json('concern.id');
+
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'Rejected'])->assertOk();
+
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'Pending'])->assertStatus(409);
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$id}", ['status' => 'Resolved'])->assertStatus(409);
+        $this->withToken($admin)->postJson("/api/concerns/{$id}/messages", ['body' => 'Admin late'])->assertStatus(409);
+        $this->withToken($resident)->postJson("/api/concerns/{$id}/messages", ['body' => 'Resident late'])->assertStatus(409);
+
+        $this->assertSame('Rejected', Concern::find($id)->status);
+        $this->withToken($resident)->getJson("/api/concerns/{$id}/messages")
+            ->assertOk()
+            ->assertJsonCount(0, 'messages');
+    }
+
+    public function test_admin_can_sort_and_filter_all_records(): void
+    {
+        $resident = $this->tokenFor('res@example.com');
+        $admin = $this->tokenFor('admin@example.com', 'admin');
+        $ownerId = User::where('email', 'res@example.com')->value('id');
+
+        // More records than one page, so sorting must happen in the database.
+        for ($i = 1; $i <= 101; $i++) {
+            $concern = new Concern([
+                'type' => $i === 1 ? 'Suggestion' : 'Complaint',
+                'title' => "Record {$i}",
+                'description' => 'Details',
+            ]);
+            $concern->user_id = $ownerId;
+            $concern->status = $i === 101 ? 'Rejected' : 'Pending';
+            $concern->created_at = now()->subDays(200 - $i);
+            $concern->save();
+        }
+
+        $this->withToken($admin)->getJson('/api/admin/concerns')
+            ->assertOk()
+            ->assertJsonCount(100, 'concerns')
+            ->assertJsonPath('concerns.0.title', 'Record 101')
+            ->assertJsonPath('total', 101)
+            ->assertJsonPath('counts.Pending', 100)
+            ->assertJsonPath('counts.Rejected', 1);
+
+        $this->withToken($admin)->getJson('/api/admin/concerns?sort=oldest')
+            ->assertOk()
+            ->assertJsonPath('concerns.0.title', 'Record 1');
+
+        $this->withToken($admin)->getJson('/api/admin/concerns?type=Suggestion')
+            ->assertJsonCount(1, 'concerns')
+            ->assertJsonPath('total', 1)
+            ->assertJsonPath('counts.Pending', 100);
+
+        $this->withToken($admin)->getJson('/api/admin/concerns?type=Complaint&status=Rejected')
+            ->assertJsonCount(1, 'concerns')
+            ->assertJsonPath('concerns.0.title', 'Record 101');
+
+        foreach (['sort=created_at', 'type=Unknown', 'status=Closed'] as $query) {
+            $this->withToken($admin)->getJson("/api/admin/concerns?{$query}")->assertStatus(422);
+        }
+        $this->withToken($resident)->getJson('/api/admin/concerns?sort=oldest')->assertStatus(403);
+    }
+
+    public function test_admin_is_notified_of_every_new_request_and_report(): void
+    {
+        $resident = $this->tokenFor('res@example.com');
+        $admin = $this->tokenFor('admin@example.com', 'admin');
+
+        $requestId = $this->withToken($resident)->post('/api/concerns', $this->fileRequest(), ['Accept' => 'application/json'])
+            ->assertCreated()->json('concern.id');
+        $blotterId = $this->withToken($resident)->postJson('/api/concerns', [
+            'type' => 'Blotter',
+            'blotter_category' => 'Other',
+            'description' => 'Details',
+            'requested_date' => $this->nextWeekday()->toDateString(),
+        ])->assertCreated()->json('concern.id');
+        $complaintId = $this->withToken($resident)->postJson('/api/concerns', [
+            'type' => 'Complaint', 'title' => 'Flooding', 'description' => 'Drainage clogged',
+        ])->json('concern.id');
+        $suggestionId = $this->withToken($resident)->postJson('/api/concerns', [
+            'type' => 'Suggestion', 'title' => 'Park', 'description' => 'More trees',
+        ])->json('concern.id');
+
+        $response = $this->withToken($admin)->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('unreadCount', 4);
+        $this->assertEqualsCanonicalizing(
+            ['New document request', 'New blotter report', 'New complaint', 'New suggestion'],
+            collect($response->json('notifications'))->pluck('heading')->all(),
+        );
+
+        // Residents are not alerted about submissions.
+        $this->withToken($resident)->getJson('/api/notifications')->assertJsonPath('unreadCount', 0);
+
+        // Handling a record clears its alert.
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$requestId}", ['status' => 'Ready for Pickup'])->assertOk();
+        $this->withToken($admin)->patchJson("/api/admin/concerns/{$blotterId}", ['final_date' => $this->nextWeekday()->toDateString(), 'status' => 'Pending'])->assertOk();
+        $this->withToken($admin)->postJson("/api/concerns/{$complaintId}/messages", ['body' => 'On it.'])->assertCreated();
+
+        $this->withToken($admin)->getJson('/api/notifications')
+            ->assertJsonPath('unreadCount', 1)
+            ->assertJsonPath('notifications.0.concern.id', $suggestionId);
+    }
+
     public function test_invalid_status_is_rejected_by_validation(): void
     {
         $resident = $this->tokenFor('res@example.com');
@@ -211,6 +362,88 @@ class ConcernSecurityTest extends TestCase
         $this->withToken($resident)->post('/api/concerns', $data, ['Accept' => 'application/json'])
             ->assertStatus(422)
             ->assertJsonValidationErrors('cedula');
+    }
+
+    public function test_request_saves_preferred_claim_date_without_confirming_it(): void
+    {
+        $resident = $this->tokenFor('res@example.com');
+        $preferred = $this->nextWeekday()->toDateString();
+
+        // A resident can suggest a date but can't set the official one.
+        $this->withToken($resident)->post('/api/concerns', [
+            ...$this->fileRequest(),
+            'requested_date' => $preferred,
+            'claim_date' => $preferred,
+            'status' => 'Ready for Pickup',
+        ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->assertJsonPath('concern.requestedDate', $preferred)
+            ->assertJsonPath('concern.claimDate', null)
+            ->assertJsonPath('concern.status', 'Pending');
+    }
+
+    public function test_request_rejects_missing_past_weekend_and_far_claim_dates(): void
+    {
+        // Several bad submissions in a row would otherwise hit the rate limit.
+        $this->withoutMiddleware(ThrottleRequests::class);
+        $resident = $this->tokenFor('res@example.com');
+        $today = Concern::today();
+        $saturday = $today->next('Saturday');
+
+        foreach ([
+            null,
+            'not-a-date',
+            $today->toDateString(),
+            $today->subDay()->toDateString(),
+            $saturday->toDateString(),
+            $today->addDays(91)->toDateString(),
+        ] as $date) {
+            $data = $this->fileRequest();
+            if ($date === null) {
+                unset($data['requested_date']);
+            } else {
+                $data['requested_date'] = $date;
+            }
+
+            $this->withToken($resident)->post('/api/concerns', $data, ['Accept' => 'application/json'])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('requested_date');
+        }
+        $this->assertSame(0, Concern::count());
+    }
+
+    public function test_dates_follow_philippine_time_not_utc(): void
+    {
+        // 07:00 on Wednesday in Manila is still Tuesday in UTC.
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-25 07:00', Concern::TIMEZONE));
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-25 07:00', Concern::TIMEZONE));
+
+        try {
+            $resident = $this->tokenFor('res@example.com');
+
+            $this->withToken($resident)->post('/api/concerns', [...$this->fileRequest(), 'requested_date' => '2026-11-25'], ['Accept' => 'application/json'])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('requested_date');
+
+            // Exactly 90 days ahead in Manila, a weekday.
+            $this->withToken($resident)->post('/api/concerns', [...$this->fileRequest(), 'requested_date' => '2027-02-23'], ['Accept' => 'application/json'])
+                ->assertCreated();
+        } finally {
+            CarbonImmutable::setTestNow();
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_database_outage_returns_a_safe_message(): void
+    {
+        Route::get('/api/test-db-down', fn () => throw new QueryException(
+            'mysql', 'select secret_column from users', [], new PDOException('SQLSTATE[HY000] [2002] Connection refused'),
+        ));
+
+        $response = $this->getJson('/api/test-db-down')->assertStatus(503);
+
+        $this->assertStringContainsString('temporarily unavailable', $response->json('message'));
+        $this->assertStringNotContainsString('secret_column', $response->getContent());
     }
 
     public function test_security_headers_are_present(): void

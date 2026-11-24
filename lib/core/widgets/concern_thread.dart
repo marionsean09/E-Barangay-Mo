@@ -14,9 +14,16 @@ import 'package:e_barangay_mo/core/widgets/app_card.dart';
 
 /// The reply thread on a complaint, shared by the resident and admin screens.
 class ConcernThread extends StatefulWidget {
-  const ConcernThread({super.key, required this.concernId});
+  const ConcernThread({
+    super.key,
+    required this.concernId,
+    this.readOnly = false,
+  });
 
   final int concernId;
+
+  /// Closed complaints keep their history but can't get new replies.
+  final bool readOnly;
 
   /// The thread on screen, so the bell doesn't alert about what's being read.
   static int? openConcernId;
@@ -59,7 +66,8 @@ class _ConcernThreadState extends State<ConcernThread> {
     try {
       final result = await ApiService.concernMessages(widget.concernId);
       if (!mounted) return;
-      final hasNew = result.isNotEmpty &&
+      final hasNew =
+          result.isNotEmpty &&
           (messages.isEmpty || result.last.id != messages.last.id);
       setState(() {
         messages = result;
@@ -97,8 +105,7 @@ class _ConcernThreadState extends State<ConcernThread> {
     if (body.isEmpty || isSending) return;
     setState(() => isSending = true);
     try {
-      final sent =
-          await ApiService.sendConcernMessage(widget.concernId, body);
+      final sent = await ApiService.sendConcernMessage(widget.concernId, body);
       if (!mounted) return;
       _input.clear();
       setState(() {
@@ -110,8 +117,9 @@ class _ConcernThreadState extends State<ConcernThread> {
       _scrollToEnd();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => isSending = false);
     }
@@ -148,8 +156,10 @@ class _ConcernThreadState extends State<ConcernThread> {
             Row(
               children: [
                 Expanded(
-                  child: Text(loadError!,
-                      style: text.bodyMedium?.copyWith(color: c.danger)),
+                  child: Text(
+                    loadError!,
+                    style: text.bodyMedium?.copyWith(color: c.danger),
+                  ),
                 ),
                 TextButton(onPressed: load, child: const Text("Retry")),
               ],
@@ -157,8 +167,12 @@ class _ConcernThreadState extends State<ConcernThread> {
           else if (messages.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpace.s3),
-              child: Text("No replies yet. Start the conversation below.",
-                  style: text.bodySmall),
+              child: Text(
+                widget.readOnly
+                    ? "No replies were sent."
+                    : "No replies yet. Start the conversation below.",
+                style: text.bodySmall,
+              ),
             )
           else
             ConstrainedBox(
@@ -167,37 +181,42 @@ class _ConcernThreadState extends State<ConcernThread> {
                 controller: _scroll,
                 shrinkWrap: true,
                 itemCount: messages.length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(height: AppSpace.s3),
+                separatorBuilder: (_, _) => const SizedBox(height: AppSpace.s3),
                 itemBuilder: (_, i) => _Bubble(message: messages[i]),
               ),
             ),
           const SizedBox(height: AppSpace.s4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _input,
-                  enabled: !isSending,
-                  minLines: 1,
-                  maxLines: 4,
-                  maxLength: 1000,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    hintText: "Write a reply",
-                    counterText: "",
+          if (widget.readOnly)
+            Text(
+              "This complaint is closed. No more replies can be sent.",
+              style: text.bodySmall,
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _input,
+                    enabled: !isSending,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: 1000,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: "Write a reply",
+                      counterText: "",
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: AppSpace.s2),
-              IconButton.filled(
-                tooltip: "Send",
-                icon: const Icon(PhosphorIconsRegular.paperPlaneTilt),
-                onPressed: isSending ? null : send,
-              ),
-            ],
-          ),
+                const SizedBox(width: AppSpace.s2),
+                IconButton.filled(
+                  tooltip: "Send",
+                  icon: const Icon(PhosphorIconsRegular.paperPlaneTilt),
+                  onPressed: isSending ? null : send,
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -222,20 +241,25 @@ class _Bubble extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
         child: Column(
-          crossAxisAlignment:
-              mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: mine
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             Text(mine ? "You" : message.senderName, style: text.labelMedium),
             const SizedBox(height: AppSpace.s1),
             Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpace.s3, vertical: AppSpace.s2),
+                horizontal: AppSpace.s3,
+                vertical: AppSpace.s2,
+              ),
               decoration: BoxDecoration(
                 color: mine ? c.primary : c.primarySoft,
                 borderRadius: BorderRadius.circular(AppRadius.md),
               ),
-              child: SelectableText(message.body,
-                  style: text.bodyMedium?.copyWith(color: foreground)),
+              child: SelectableText(
+                message.body,
+                style: text.bodyMedium?.copyWith(color: foreground),
+              ),
             ),
             if (sent != null) ...[
               const SizedBox(height: AppSpace.s1),
