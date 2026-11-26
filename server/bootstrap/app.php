@@ -25,7 +25,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Railway/Cloudflare terminate TLS and forward the original scheme.
         $middleware->trustProxies(at: '*');
 
-        $middleware->prepend(ForceHttps::class);
+        // Appended, so it runs AFTER TrustProxies has read X-Forwarded-Proto.
+        // (Prepended, it saw every proxied request as plain HTTP and
+        // redirected forever: ERR_TOO_MANY_REDIRECTS on Railway.)
+        $middleware->append(ForceHttps::class);
         $middleware->append(SecurityHeaders::class);
 
         $middleware->alias(['role' => EnsureRole::class]);
