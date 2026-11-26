@@ -79,7 +79,13 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
 
   /// Reads a picked photo and checks it, or shows why it can't be used.
   Future<Uint8List?> readPhoto(XFile picked) async {
-    final bytes = await picked.readAsBytes();
+    final Uint8List bytes;
+    try {
+      bytes = await picked.readAsBytes();
+    } catch (_) {
+      showMessage("Couldn't open that photo. Please try another one.");
+      return null;
+    }
     if (imageExtension(bytes) == 'unknown') {
       showMessage("That file isn't a photo. Please choose a picture.");
       return null;
@@ -91,13 +97,24 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
     return bytes;
   }
 
+  /// Opens the gallery. Returns null if nothing was picked or it failed
+  /// (the user is told why instead of nothing happening).
+  Future<XFile?> pickPhoto() async {
+    try {
+      return await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 80,
+      );
+    } catch (_) {
+      showMessage("Couldn't open your photos. Please try again.");
+      return null;
+    }
+  }
+
   Future<void> pickRequirement(String key) async {
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 80,
-    );
-    if (picked == null) return;
+    final picked = await pickPhoto();
+    if (picked == null || !mounted) return;
 
     final bytes = await readPhoto(picked);
     if (bytes == null || !mounted) return;
@@ -109,12 +126,8 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
 
   Future<void> addBlotterPhoto() async {
     if (blotterPhotos.length >= maxBlotterPhotos) return;
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 80,
-    );
-    if (picked == null) return;
+    final picked = await pickPhoto();
+    if (picked == null || !mounted) return;
 
     final bytes = await readPhoto(picked);
     if (bytes == null || !mounted) return;

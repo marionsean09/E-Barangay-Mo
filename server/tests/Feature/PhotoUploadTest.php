@@ -124,6 +124,24 @@ class PhotoUploadTest extends TestCase
         $this->assertSame(0, Concern::count());
     }
 
+    /**
+     * The photo picker hands the app a blob: URL, and the app fetches it to
+     * read the bytes. Without blob: in connect-src the browser blocks that,
+     * so no photo ever appears (only on the deployed site, which sends a CSP).
+     */
+    public function test_app_page_lets_the_browser_read_picked_photos(): void
+    {
+        $connectSrc = fn (string $csp) => collect(explode(';', $csp))
+            ->map(fn ($d) => trim($d))
+            ->first(fn ($d) => str_starts_with($d, 'connect-src '));
+
+        $this->assertContains('blob:', explode(' ', $connectSrc(config('security.csp_app'))));
+
+        // Same policy on index.html when Apache serves it directly.
+        preg_match('/Content-Security-Policy "([^"]+)"/', file_get_contents(public_path('.htaccess')), $m);
+        $this->assertContains('blob:', explode(' ', $connectSrc($m[1])));
+    }
+
     public function test_detection_uses_the_bytes_not_the_name(): void
     {
         $this->assertSame('image/heic', ImageUpload::detect(self::isoFile('heic')));

@@ -41,7 +41,9 @@ return [
         "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
         "img-src 'self' data: blob:",
         "font-src 'self' data: https://fonts.gstatic.com",
-        "connect-src 'self' https://fonts.gstatic.com https://accounts.google.com/gsi/",
+        // blob: lets the app read a photo the user just picked (the picker
+        // hands over a blob: URL). It only covers files already in this tab.
+        "connect-src 'self' blob: https://fonts.gstatic.com https://accounts.google.com/gsi/",
         "frame-src https://accounts.google.com/gsi/",
         "worker-src 'self' blob:",
         "object-src 'none'",
