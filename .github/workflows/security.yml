@@ -43,6 +43,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned to the version the app is developed with, so a new Flutter
+          # release with stricter lints can't fail every push overnight.
+          flutter-version: 3.47.1
       - run: flutter pub get
       - run: flutter analyze
 
