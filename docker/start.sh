@@ -17,6 +17,15 @@ fi
 
 php artisan config:cache
 
+# First admin on a fresh database: set ADMIN_EMAIL and ADMIN_PASSWORD once,
+# deploy, then delete ADMIN_PASSWORD. Existing accounts are only promoted,
+# their password is never overwritten. Runs as www-data so the log files it
+# writes stay writable by Apache.
+if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
+    su -p -s /bin/sh www-data -c 'php artisan user:create-admin "$ADMIN_EMAIL" --from-env' \
+        || echo "Admin bootstrap failed; see the message above."
+fi
+
 # Runs the daily attachment retention job.
 su -p -s /bin/sh www-data -c 'php artisan schedule:work' &
 

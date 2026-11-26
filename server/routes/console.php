@@ -37,6 +37,84 @@ Artisan::command('user:role {email} {role}', function (string $email, string $ro
 })->purpose('Set a user role (resident/admin)');
 
 /*
+| Creates a ready-to-use admin straight in the database, for a fresh server
+| (e.g. Railway) where signing up would need a working email first.
+| The password is typed at a hidden prompt, or with --from-env read from the
+| ADMIN_PASSWORD variable (used once by docker/start.sh, then removed).
+|
+|   php artisan user:create-admin admin@example.com --name="Barangay Admin"
+|
+| If the email already has an account it is promoted to admin and its
+| password is left alone (use user:password to change it).
+*/
+Artisan::command('user:create-admin {email} {--name=Barangay Admin} {--from-env : Read the password from ADMIN_PASSWORD}', function (string $email) {
+    $email = strtolower(trim($email));
+    $name = trim((string) $this->option('name'));
+
+    $input = Validator::make(['email' => $email, 'full_name' => $name], [
+        'email' => ['required', 'string', 'email:rfc', 'max:191'],
+        'full_name' => ['required', 'string', 'min:2', 'max:100', "regex:/^[\pL\s.'-]+$/u"],
+    ]);
+    if ($input->fails()) {
+        foreach ($input->errors()->all() as $message) {
+            $this->error($message);
+        }
+
+        return 1;
+    }
+
+    $user = User::where('email', $email)->first();
+    if ($user) {
+        $wasAdmin = $user->isAdmin();
+        $user->forceFill([
+            'role' => 'admin',
+            // The operator vouches for this address.
+            'email_verified_at' => $user->email_verified_at ?? now(),
+        ])->save();
+        if (! $wasAdmin) {
+            SecurityLog::event('role_changed', ['role' => 'admin', 'by' => 'console'], $user->id, 'user', $user->id);
+        }
+        $this->info($wasAdmin
+            ? "{$email} is already an admin. Password unchanged (use user:password to change it)."
+            : "{$email} already had an account and is now an admin. Password unchanged.");
+
+        return 0;
+    }
+
+    if ($this->option('from-env')) {
+        $password = (string) getenv('ADMIN_PASSWORD');
+    } else {
+        $password = (string) $this->secret('Password (min 8 chars, letters and numbers)');
+        if ($password !== (string) $this->secret('Confirm password')) {
+            $this->error('Passwords do not match.');
+
+            return 1;
+        }
+    }
+
+    // Same rules as sign-up.
+    $check = Validator::make(
+        ['password' => $password],
+        ['password' => ['required', 'string', 'max:128', Password::min(8)->letters()->numbers()]],
+    );
+    if ($check->fails()) {
+        foreach ($check->errors()->all() as $message) {
+            $this->error($message);
+        }
+
+        return 1;
+    }
+
+    $user = new User(['full_name' => $name, 'email' => $email, 'password' => $password]); // hashed by the cast
+    $user->forceFill(['role' => 'admin', 'email_verified_at' => now()])->save();
+    SecurityLog::event('admin_created', ['by' => 'console'], $user->id, 'user', $user->id);
+
+    $this->info("Admin {$email} created. You can log in now.");
+
+    return 0;
+})->purpose('Create a verified admin account (hidden password prompt)');
+
+/*
 | Reset a password from the server console, e.g. a forgotten admin password.
 | The password is typed at a hidden prompt, never passed as an argument, so it
 | does not end up in shell history.

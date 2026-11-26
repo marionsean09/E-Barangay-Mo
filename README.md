@@ -82,6 +82,21 @@ cd server
 php artisan user:role you@example.com admin
 ```
 
+Or create a ready-to-use admin directly (no sign-up or email code needed).
+The password is typed at a hidden prompt:
+
+```bash
+php artisan user:create-admin admin@example.com --name="Barangay Admin"
+```
+
+On Railway, either set `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the app service,
+deploy once, then **delete `ADMIN_PASSWORD`**; or run the command over
+`railway ssh` as the web user so log files stay writable:
+
+```bash
+su -p -s /bin/sh www-data -c 'php artisan user:create-admin admin@example.com'
+```
+
 ## 6. Run the security test suite
 
 ```bash

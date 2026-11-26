@@ -21,7 +21,7 @@ class SecurityLog
         $userId ??= $request?->user()?->id;
         $ip = $request?->ip();
 
-        Log::channel('security')->info($action, array_merge($details, [
+        self::write('info', $action, array_merge($details, [
             'user_id' => $userId,
             'ip' => $ip,
             'path' => $request?->path(),
@@ -38,7 +38,25 @@ class SecurityLog
             ]);
         } catch (Throwable $e) {
             // Logging must never break the request it is describing.
-            Log::channel('security')->error('audit_log_write_failed', ['error' => $e->getMessage()]);
+            self::write('error', 'audit_log_write_failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Writes to the security log file. If the file can't be written (e.g. it
+     * was created by root from a console session), the entry goes to stderr,
+     * which the host keeps (Railway's deploy logs), instead of failing the request.
+     */
+    private static function write(string $level, string $message, array $context): void
+    {
+        try {
+            Log::channel('security')->log($level, $message, $context);
+        } catch (Throwable $e) {
+            try {
+                Log::channel('stderr')->log($level, $message, $context + ['security_log_error' => $e->getMessage()]);
+            } catch (Throwable) {
+                // Nowhere left to write; the audit_logs row is still attempted.
+            }
         }
     }
 
