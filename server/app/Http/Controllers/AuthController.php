@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ForgotPasswordRequest;
 use App\Http\Requests\GoogleLoginRequest;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\ResendCodeRequest;
+use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Requests\VerifyEmailRequest;
 use App\Models\User;
 use App\Services\EmailVerification;
 use App\Services\GoogleIdToken;
+use App\Services\PasswordReset;
 use App\Services\TokenService;
 use App\Support\SecurityLog;
 use Illuminate\Http\JsonResponse;
@@ -143,6 +146,60 @@ class AuthController extends Controller
         }
 
         return response()->json(['message' => "We sent a new code to {$email}."]);
+    }
+
+    /**
+     * "Forgot password": emails a 6-digit reset code. The reply is the same
+     * whether or not the email has an account, so this can't be used to find
+     * out who is registered.
+     */
+    public function forgotPassword(ForgotPasswordRequest $request, PasswordReset $reset): JsonResponse
+    {
+        $email = strtolower($request->validated('email'));
+        $user = User::where('email', $email)->first();
+
+        // Only verified accounts. An unfinished sign-up can simply sign up again.
+        if ($user?->hasVerifiedEmail()) {
+            try {
+                $reset->send($user);
+            } catch (Throwable $e) {
+                // Not shown to the caller: a different reply would reveal the account exists.
+                report($e);
+                SecurityLog::event('password_reset_email_failed', ['error' => class_basename($e)], $user->id);
+            }
+        } else {
+            SecurityLog::event('password_reset_unknown', ['email' => SecurityLog::maskEmail($email)]);
+        }
+
+        return response()->json([
+            'message' => "If {$email} has an eBarangay Mo account, we sent a 6-digit code to it.",
+        ]);
+    }
+
+    /**
+     * Code + new password. On success every session is signed out, so anyone
+     * who had the old password (or a stolen session) loses access.
+     */
+    public function resetPassword(ResetPasswordRequest $request, PasswordReset $reset): JsonResponse
+    {
+        $email = strtolower($request->validated('email'));
+        $user = User::where('email', $email)->first();
+
+        // One generic message for an unknown email, wrong code or expired code.
+        if (! $user?->hasVerifiedEmail() || ! $reset->consume($user, $request->validated('code'))) {
+            return response()->json([
+                'message' => 'That code is incorrect or has expired.',
+                'errors' => ['code' => ['That code is incorrect or has expired.']],
+            ], 422);
+        }
+
+        $user->password = $request->validated('password'); // hashed by the 'hashed' cast (argon2id)
+        $user->save();
+
+        $this->tokens->revokeOtherFamilies($user, null);
+        SecurityLog::event('credentials_changed', ['password_changed' => true, 'by' => 'reset'], $user->id, 'user', $user->id);
+
+        return response()->json(['message' => 'Your password was changed. Log in with your new password.']);
     }
 
     /**

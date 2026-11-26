@@ -19,6 +19,8 @@ Route::prefix('auth')->group(function () {
     Route::post('verify-email', [AuthController::class, 'verifyEmail'])->middleware('throttle:verify');
     Route::post('resend-code', [AuthController::class, 'resendCode'])->middleware('throttle:resend');
     Route::post('google', [AuthController::class, 'google'])->middleware('throttle:google');
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:forgot');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:reset');
 
     // These two read the httpOnly refresh cookie, so they get the CSRF check.
     Route::middleware([VerifyOrigin::class, 'throttle:refresh'])->group(function () {

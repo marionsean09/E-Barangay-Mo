@@ -4,6 +4,7 @@ import 'package:e_barangay_mo/core/theme/phosphor_icons.dart';
 import 'package:e_barangay_mo/core/services/api_service.dart';
 import 'package:e_barangay_mo/features/auth/auth_gate.dart';
 
+import 'package:e_barangay_mo/features/auth/forgot_password_page.dart';
 import 'package:e_barangay_mo/features/auth/google_sign_in_section.dart';
 import 'package:e_barangay_mo/features/auth/signup_page.dart';
 import 'package:e_barangay_mo/features/auth/verify_email_page.dart';
@@ -225,7 +226,23 @@ class _LoginPageState extends State<LoginPage> {
               prefixIcon: Icon(PhosphorIconsRegular.lock),
             ),
           ),
-          const SizedBox(height: AppSpace.s6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: isLoading
+                  ? null
+                  : () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ForgotPasswordPage(
+                            initialEmail: emailController.text.trim(),
+                          ),
+                        ),
+                      ),
+              child: const Text("Forgot password?"),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s3),
           PressScale(
             enabled: !isLoading,
             child: ElevatedButton(

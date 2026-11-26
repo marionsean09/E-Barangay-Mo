@@ -123,6 +123,26 @@ class ApiService {
     return body['message'] as String? ?? 'We sent a new code.';
   }
 
+  /// Asks the server to email a password reset code. The reply is the same
+  /// whether or not the email has an account.
+  static Future<String> forgotPassword(String email) async {
+    final body = await _json('POST', 'auth/forgot-password',
+        body: {'email': email}, auth: false);
+    return body['message'] as String? ?? 'Check your email for a code.';
+  }
+
+  /// Sets a new password with the emailed code. No session: log in after.
+  static Future<String> resetPassword({
+    required String email,
+    required String code,
+    required String password,
+  }) async {
+    final body = await _json('POST', 'auth/reset-password',
+        body: {'email': email, 'code': code, 'password': password},
+        auth: false);
+    return body['message'] as String? ?? 'Your password was changed.';
+  }
+
   /// Called on app start: trades the refresh cookie (if any) for a new
   /// access token. Returns null when the user has to log in.
   static Future<AppUser?> restoreSession() async {

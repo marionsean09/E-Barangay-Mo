@@ -52,6 +52,18 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour(20)->by('resend-ip:'.$request->ip()),
         ]);
 
+        // "Forgot password" sends emails (also limited to one per minute per account).
+        RateLimiter::for('forgot', fn (Request $request) => [
+            Limit::perHour(5)->by('forgot:'.strtolower((string) $request->input('email'))),
+            Limit::perHour(20)->by('forgot-ip:'.$request->ip()),
+        ]);
+
+        // Guessing reset codes. Each code also dies after 5 wrong tries.
+        RateLimiter::for('reset', fn (Request $request) => [
+            Limit::perMinute(5)->by('reset:'.strtolower((string) $request->input('email')).'|'.$request->ip()),
+            Limit::perMinute(20)->by('reset-ip:'.$request->ip()),
+        ]);
+
         // Each call makes a request to Google, so cap it per IP.
         RateLimiter::for('google', fn (Request $request) => Limit::perMinute(10)->by('google:'.$request->ip()));
 
