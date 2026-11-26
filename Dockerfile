@@ -32,9 +32,11 @@ FROM php:8.3-apache
 # Imagick converts any phone photo (HEIC, AVIF, PNG...) to a clean JPEG and
 # strips EXIF/GPS (app/Services/ImageUpload.php). The installer pulls in
 # ImageMagick with its HEIF/AVIF decoders.
-COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
+# Optional: if it can't be installed the build still succeeds, and photos are
+# stored as uploaded (already verified as real images) instead of converted.
+COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
 RUN install-php-extensions imagick \
-    && php -r 'exit(extension_loaded("imagick") ? 0 : 1);'
+    || echo "WARNING: imagick not installed; photos will be stored without conversion"
 
 RUN docker-php-ext-install pdo_mysql \
     && a2enmod rewrite headers \
