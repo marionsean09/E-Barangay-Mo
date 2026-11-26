@@ -12,8 +12,11 @@ COPY web web
 # Self-host CanvasKit instead of loading it from a third-party CDN.
 # Public OAuth client ID. Railway passes its service variable as a build arg.
 ARG GOOGLE_CLIENT_ID=""
-RUN flutter build web --release --no-web-resources-cdn \
-    --dart-define=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID"
+# Spaces/newlines pasted into the variable are removed: a trailing newline
+# made Flutter read the option as a file name ("Target file ... not found").
+RUN CLIENT_ID="$(printf '%s' "$GOOGLE_CLIENT_ID" | tr -d '[:space:]')" \
+    && flutter build web --release --no-web-resources-cdn \
+       --dart-define=GOOGLE_CLIENT_ID="$CLIENT_ID"
 
 # ---- 2. Install PHP dependencies (no dev packages) ----------------------
 FROM composer:2 AS vendor

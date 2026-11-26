@@ -38,7 +38,9 @@ return [
     // "Sign in with Google". The OAuth Web client ID (public, not a secret).
     // Google ID tokens are accepted only if issued for this exact client.
     'google' => [
-        'client_id' => env('GOOGLE_CLIENT_ID'),
+        // Trimmed: a newline pasted into the host's variable would make every
+        // Google token look like it was issued for a different app.
+        'client_id' => trim((string) env('GOOGLE_CLIENT_ID')) ?: null,
     ],
 
 ];
