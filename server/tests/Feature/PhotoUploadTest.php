@@ -8,7 +8,9 @@ use App\Models\User;
 use App\Services\ImageUpload;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\AuditLog;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -22,6 +24,12 @@ class PhotoUploadTest extends TestCase
     private const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
     private const GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Storage::fake('local');
+    }
 
     /** Start of an ISO media file: size, "ftyp", major brand, version, compatible brands. */
     private static function isoFile(string $major, array $compatible = []): string
@@ -140,6 +148,36 @@ class PhotoUploadTest extends TestCase
         // Same policy on index.html when Apache serves it directly.
         preg_match('/Content-Security-Policy "([^"]+)"/', file_get_contents(public_path('.htaccess')), $m);
         $this->assertContains('blob:', explode(' ', $connectSrc($m[1])));
+    }
+
+    public function test_a_lost_file_says_so_instead_of_failing_integrity(): void
+    {
+        $token = $this->token();
+        $this->submit($token, UploadedFile::fake()->createWithContent('id.png', base64_decode(self::PNG)))->assertCreated();
+        $photo = Attachment::where('kind', 'validIdFront')->firstOrFail();
+
+        // What a redeploy without a persistent volume does.
+        Storage::disk('local')->delete($photo->path);
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson("/api/attachments/{$photo->id}")
+            ->assertStatus(410)
+            ->assertJsonPath('message', 'This photo is no longer stored on the server. Please upload it again.');
+        $this->assertTrue(AuditLog::where('action', 'attachment_missing')->exists());
+    }
+
+    public function test_an_altered_file_fails_its_integrity_check(): void
+    {
+        $token = $this->token();
+        $this->submit($token, UploadedFile::fake()->createWithContent('id.png', base64_decode(self::PNG)))->assertCreated();
+        $photo = Attachment::where('kind', 'validIdFront')->firstOrFail();
+
+        // Swapped for a different, validly encrypted file.
+        Storage::disk('local')->put($photo->path, \Illuminate\Support\Facades\Crypt::encryptString('not the original'));
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson("/api/attachments/{$photo->id}")->assertStatus(409);
+        $this->assertTrue(AuditLog::where('action', 'attachment_integrity_failed')->exists());
     }
 
     public function test_detection_uses_the_bytes_not_the_name(): void

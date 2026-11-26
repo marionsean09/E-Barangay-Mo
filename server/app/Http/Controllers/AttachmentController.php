@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Attachment;
 use App\Services\AttachmentStore;
 use App\Support\SecurityLog;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Support\Facades\Gate;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,8 +19,16 @@ class AttachmentController extends Controller
 
         try {
             $contents = $store->read($attachment);
+        } catch (FileNotFoundException) {
+            // Not an attack: the file was lost, e.g. the host's storage was reset.
+            SecurityLog::event('attachment_missing', [], null, 'attachment', $attachment->id);
+
+            return response()->json([
+                'message' => 'This photo is no longer stored on the server. Please upload it again.',
+            ], 410);
         } catch (RuntimeException $e) {
-            SecurityLog::event('attachment_integrity_failed', [], null, 'attachment', $attachment->id);
+            // Undecryptable or altered: logged with the reason for investigation.
+            SecurityLog::event('attachment_integrity_failed', ['reason' => $e->getMessage()], null, 'attachment', $attachment->id);
 
             return response()->json(['message' => 'This file failed its integrity check.'], 409);
         }

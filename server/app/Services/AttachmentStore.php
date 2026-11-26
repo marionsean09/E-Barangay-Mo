@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Attachment;
 use finfo;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
@@ -41,12 +43,25 @@ class AttachmentStore
         ];
     }
 
+    /**
+     * @throws FileNotFoundException the file is gone (e.g. no persistent volume, so a redeploy wiped it)
+     * @throws RuntimeException      it can't be decrypted (APP_KEY changed) or its hash doesn't match (tampered)
+     */
     public function read(Attachment $attachment): string
     {
-        $contents = Crypt::decryptString(Storage::disk(self::DISK)->get($attachment->path));
+        $disk = Storage::disk(self::DISK);
+        if (! $disk->exists($attachment->path)) {
+            throw new FileNotFoundException('Attachment file is missing from storage.');
+        }
+
+        try {
+            $contents = Crypt::decryptString((string) $disk->get($attachment->path));
+        } catch (DecryptException $e) {
+            throw new RuntimeException('Attachment could not be decrypted (was APP_KEY changed?).', 0, $e);
+        }
 
         if (! hash_equals($attachment->sha256, hash('sha256', $contents))) {
-            throw new RuntimeException('Attachment integrity check failed.');
+            throw new RuntimeException('Attachment hash does not match (file was altered).');
         }
 
         return $contents;
