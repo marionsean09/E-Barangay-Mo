@@ -78,11 +78,12 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
 
   /// Resolving or rejecting is permanent, so it asks first.
   Future<void> changeStatus(String next) async {
+    final name = statusName(data['type'] as String?, next);
     if (isClosedStatus(next)) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text("Mark as ${next.toLowerCase()}?"),
+          title: Text("Mark as ${name.toLowerCase()}?"),
           content: const Text(
             "This is final. Its status, dates and replies can no longer be changed.",
           ),
@@ -93,14 +94,14 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text("Mark as ${next.toLowerCase()}"),
+              child: Text("Mark as ${name.toLowerCase()}"),
             ),
           ],
         ),
       );
       if (confirmed != true || !mounted) return;
     }
-    await save({'status': next}, "Marked as $next");
+    await save({'status': next}, "Marked as $name");
   }
 
   Future<void> pickClaimDate() async {
@@ -289,7 +290,7 @@ class _ConcernDetailPageState extends State<ConcernDetailPage> {
                             children: [
                               for (final s in statusesFor(data['type']))
                                 ChoiceChip(
-                                  label: Text(s),
+                                  label: Text(statusName(data['type'] as String?, s)),
                                   selected: status == s,
                                   showCheckmark: false,
                                   onSelected: (_) {

@@ -60,11 +60,36 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
       return 'webp';
     }
     if (starts([0x47, 0x49, 0x46, 0x38])) return 'gif';
-    if (starts([0x66, 0x74, 0x79, 0x70], 4)) return 'heic';
+    if (starts([0x42, 0x4D])) return 'bmp';
+    // HEIC/HEIF (iPhone, many Android phones) and AVIF share the ISO "ftyp"
+    // box; the brand says which. Videos (MP4/MOV) use other brands.
+    if (starts([0x66, 0x74, 0x79, 0x70], 4) && bytes.length >= 16) {
+      final end = bytes.length < 64 ? bytes.length : 64;
+      final brands = String.fromCharCodes(bytes.sublist(8, end));
+      if (brands.contains('avif') || brands.contains('avis')) return 'avif';
+      if (RegExp(r'hei[cxms]|hev[cxms]|mif1|msf1').hasMatch(brands)) {
+        return 'heic';
+      }
+    }
     return 'unknown';
   }
 
-  static const acceptedExtensions = {'jpg', 'png', 'webp'};
+  /// Same limit as the server (ImageUpload::MAX_KB).
+  static const maxPhotoBytes = 15 * 1024 * 1024;
+
+  /// Reads a picked photo and checks it, or shows why it can't be used.
+  Future<Uint8List?> readPhoto(XFile picked) async {
+    final bytes = await picked.readAsBytes();
+    if (imageExtension(bytes) == 'unknown') {
+      showMessage("That file isn't a photo. Please choose a picture.");
+      return null;
+    }
+    if (bytes.length > maxPhotoBytes) {
+      showMessage("That photo is larger than 15 MB. Please choose a smaller one.");
+      return null;
+    }
+    return bytes;
+  }
 
   Future<void> pickRequirement(String key) async {
     final picked = await picker.pickImage(
@@ -74,11 +99,8 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
     );
     if (picked == null) return;
 
-    final bytes = await picked.readAsBytes();
-    if (!acceptedExtensions.contains(imageExtension(bytes))) {
-      showMessage("Please choose a JPG, PNG or WEBP photo.");
-      return;
-    }
+    final bytes = await readPhoto(picked);
+    if (bytes == null || !mounted) return;
     setState(() {
       requirementFiles[key] = picked;
       requirementPreviews[key] = bytes;
@@ -94,12 +116,27 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
     );
     if (picked == null) return;
 
-    final bytes = await picked.readAsBytes();
-    if (!acceptedExtensions.contains(imageExtension(bytes))) {
-      showMessage("Please choose a JPG, PNG or WEBP photo.");
-      return;
-    }
+    final bytes = await readPhoto(picked);
+    if (bytes == null || !mounted) return;
     setState(() => blotterPhotos.add(bytes));
+  }
+
+  /// Some browsers can't draw every format (e.g. HEIC in Chrome). The photo
+  /// is still uploaded and converted by the server; show a placeholder here.
+  Widget photoPreview(Uint8List bytes, double size) {
+    final c = context.colors;
+    return Image.memory(
+      bytes,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => Container(
+        width: size,
+        height: size,
+        color: c.primarySoft,
+        child: Icon(PhosphorIconsRegular.camera, color: c.primary),
+      ),
+    );
   }
 
   Future<void> pickRequestedDate() async {
@@ -235,12 +272,7 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
                 ClipRRect(
                   borderRadius: radius,
                   child: done
-                      ? Image.memory(
-                          preview,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                        )
+                      ? photoPreview(preview, 56)
                       : Container(
                           width: 56,
                           height: 56,
@@ -401,12 +433,7 @@ class _SubmitConcernPageState extends State<SubmitConcernPage> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.sm),
-                  child: Image.memory(
-                    blotterPhotos[i],
-                    width: 96,
-                    height: 96,
-                    fit: BoxFit.cover,
-                  ),
+                  child: photoPreview(blotterPhotos[i], 96),
                 ),
                 Positioned(
                   top: -8,

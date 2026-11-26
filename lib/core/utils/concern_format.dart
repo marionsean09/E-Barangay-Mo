@@ -11,10 +11,14 @@ const concernStatuses = [
   'Rejected',
 ];
 
-/// Statuses an admin can set. Ready for Pickup is for document requests only.
-List<String> statusesFor(String? type) => type == 'Request'
-    ? concernStatuses
-    : concernStatuses.where((s) => s != readyForPickup).toList();
+/// Statuses an admin can set, in the order the buttons appear.
+/// Ready for Pickup is for document requests only. Suggestions list
+/// Accepted (stored as Resolved) first.
+List<String> statusesFor(String? type) => switch (type) {
+      'Request' => concernStatuses,
+      'Suggestion' => const ['Resolved', 'Pending', 'Rejected'],
+      _ => concernStatuses.where((s) => s != readyForPickup).toList(),
+    };
 
 /// Resolved and rejected concerns are final. The server enforces this too.
 bool isClosedStatus(String? status) =>
@@ -64,13 +68,23 @@ String referenceFor(Concern row) {
   return '$prefix-$year-${row.id.toString().padLeft(4, '0')}';
 }
 
+/// What a status is called for this type of concern. The stored value stays
+/// the same (Resolved/Rejected); only the wording people see changes.
+String statusName(String? type, String status) => switch ((type, status)) {
+      ('Blotter', 'Resolved') => 'Settled',
+      ('Suggestion', 'Resolved') => 'Accepted',
+      ('Suggestion', 'Rejected') => 'Not adopted',
+      _ => status,
+    };
+
 String statusLabel(Map<String, dynamic> data) {
   final String status = data['status'] ?? 'Pending';
-  if (data['type'] == 'Blotter') {
-    if (status == 'Pending' && data['finalDate'] != null) return 'Scheduled';
-    if (status == 'Resolved') return 'Settled';
+  if (data['type'] == 'Blotter' &&
+      status == 'Pending' &&
+      data['finalDate'] != null) {
+    return 'Scheduled';
   }
-  return status;
+  return statusName(data['type'] as String?, status);
 }
 
 IconData typeIcon(String? type) => switch (type) {

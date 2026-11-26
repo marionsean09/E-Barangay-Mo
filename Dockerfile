@@ -26,6 +26,13 @@ RUN composer dump-autoload --optimize --no-dev
 # ---- 3. Runtime: PHP 8.3 + Apache ---------------------------------------
 FROM php:8.3-apache
 
+# Imagick converts any phone photo (HEIC, AVIF, PNG...) to a clean JPEG and
+# strips EXIF/GPS (app/Services/ImageUpload.php). The installer pulls in
+# ImageMagick with its HEIF/AVIF decoders.
+COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions imagick \
+    && php -r 'exit(extension_loaded("imagick") ? 0 : 1);'
+
 RUN docker-php-ext-install pdo_mysql \
     && a2enmod rewrite headers \
     && sed -ri 's!/var/www/html!/var/www/html/public!g' \
@@ -34,7 +41,8 @@ RUN docker-php-ext-install pdo_mysql \
     && printf 'ServerTokens Prod\nServerSignature Off\nTraceEnable Off\n' \
         > /etc/apache2/conf-enabled/zz-hardening.conf \
     && mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
-    && printf 'expose_php=Off\nupload_max_filesize=6M\npost_max_size=32M\n' \
+    # 15 MB per photo (ImageUpload::MAX_KB), up to 4 photos per submission.
+    && printf 'expose_php=Off\nupload_max_filesize=16M\npost_max_size=64M\nmemory_limit=256M\n' \
         > "$PHP_INI_DIR/conf.d/app.ini"
 
 WORKDIR /var/www/html

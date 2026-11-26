@@ -3,36 +3,34 @@
 namespace App\Http\Requests;
 
 use App\Models\Concern;
+use App\Services\ImageUpload;
 use Carbon\CarbonImmutable;
 use Closure;
 use ErrorException;
-use finfo;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class StoreConcernRequest extends FormRequest
 {
-    public const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
-
     public function rules(): array
     {
         $photo = [
-            'bail', 'file', 'max:5120',
+            'bail', 'file', 'max:'.ImageUpload::MAX_KB,
             // Check the real bytes (magic numbers), not the filename or the
-            // Content-Type the client claims. Stops "shell.php" renamed to ".jpg".
-            // Runs before 'mimes', which also opens the file. A file that can't
-            // be read (e.g. blocked by antivirus) is rejected, not a server error.
+            // Content-Type the client claims. Any photo format a phone makes
+            // passes (JPG, PNG, WEBP, HEIC/HEIF, AVIF, GIF, BMP); "shell.php"
+            // renamed to ".jpg" does not. A file that can't be read (e.g.
+            // blocked by antivirus) is rejected, not a server error.
             function (string $attribute, mixed $value, Closure $fail) {
                 try {
-                    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($value->getRealPath());
+                    $bytes = file_get_contents($value->getRealPath());
                 } catch (ErrorException) {
-                    $mime = false;
+                    $bytes = false;
                 }
-                if (! in_array($mime, self::ALLOWED_MIMES, true)) {
-                    $fail('The :attribute must be a JPG, PNG or WEBP image.');
+                if ($bytes === false || ImageUpload::detect($bytes) === null) {
+                    $fail('The :attribute must be a photo (JPG, PNG, HEIC, WEBP, AVIF, GIF or BMP).');
                 }
             },
-            'mimes:jpg,jpeg,png,webp',
         ];
 
         $rules = [

@@ -19,10 +19,13 @@ class AttachmentStore
 {
     private const DISK = 'local';
 
+    public function __construct(private ImageUpload $images) {}
+
     /** @return array{kind: string, path: string, mime: string, size: int, sha256: string} */
     public function put(UploadedFile $file, string $kind): array
     {
-        $contents = $file->get();
+        // Re-encoded as a clean JPEG (no EXIF/GPS) when possible; see ImageUpload.
+        ['bytes' => $contents, 'mime' => $mime] = $this->images->normalize($file->get());
         // Random name: the original filename is never used on disk.
         $path = 'attachments/'.Str::random(40).'.bin';
 
@@ -32,7 +35,7 @@ class AttachmentStore
             'kind' => $kind,
             'path' => $path,
             // Detected from the bytes, never the client's Content-Type.
-            'mime' => (new finfo(FILEINFO_MIME_TYPE))->buffer($contents),
+            'mime' => $mime !== '' ? $mime : (new finfo(FILEINFO_MIME_TYPE))->buffer($contents),
             'size' => strlen($contents),
             'sha256' => hash('sha256', $contents),
         ];
