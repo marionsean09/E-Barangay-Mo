@@ -9,6 +9,7 @@ import 'package:e_barangay_mo/core/models/app_user.dart';
 import 'package:e_barangay_mo/core/models/concern.dart';
 import 'package:e_barangay_mo/core/models/concern_message.dart';
 import 'package:e_barangay_mo/core/models/reply_notification.dart';
+import 'package:e_barangay_mo/core/utils/concern_format.dart' show apiDate;
 import 'package:e_barangay_mo/core/services/http_client_io.dart'
     if (dart.library.js_interop) 'package:e_barangay_mo/core/services/http_client_web.dart';
 
@@ -196,11 +197,15 @@ class ApiService {
     String sort = 'newest',
     String? type,
     String? status,
+    String? search,
+    DateTime? date,
   }) async {
     final query = Uri(queryParameters: {
       'sort': sort,
       'type': ?type,
       'status': ?status,
+      if (search != null && search.trim().isNotEmpty) 'q': search.trim(),
+      if (date != null) 'date': apiDate(date),
     }).query;
     final body = await _json('GET', 'admin/concerns?$query');
     return (

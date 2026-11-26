@@ -12,6 +12,7 @@ class ServiceCard extends StatelessWidget {
     required this.title,
     required this.meta,
     required this.status,
+    this.reference,
     this.statusLabel,
     this.icon,
     this.note,
@@ -21,6 +22,9 @@ class ServiceCard extends StatelessWidget {
   });
 
   final String title;
+
+  /// Reference number shown right after the title, e.g. "BC-2026-0012".
+  final String? reference;
 
   final String meta;
   final String status;
@@ -61,7 +65,35 @@ class ServiceCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: text.titleMedium),
+                  if (reference == null)
+                    Text(title, style: text.titleMedium)
+                  else
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: AppSpace.s2,
+                      runSpacing: AppSpace.s1,
+                      children: [
+                        Text(title, style: text.titleMedium),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpace.s2, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: c.primarySoft,
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.full),
+                          ),
+                          child: Text(
+                            reference!,
+                            style: text.labelMedium?.copyWith(
+                              color: c.primary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: AppSpace.s1),
                   Text(meta, style: text.bodySmall),
                   if (note != null) ...[

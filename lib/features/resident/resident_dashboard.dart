@@ -14,6 +14,7 @@ import 'package:e_barangay_mo/core/theme/app_tokens.dart';
 import 'package:e_barangay_mo/core/utils/concern_format.dart';
 import 'package:e_barangay_mo/core/widgets/brand_logo.dart';
 import 'package:e_barangay_mo/core/widgets/hero_panel.dart';
+import 'package:e_barangay_mo/core/widgets/list_controls.dart';
 import 'package:e_barangay_mo/core/widgets/notification_bell.dart';
 import 'package:e_barangay_mo/core/widgets/press_scale.dart';
 import 'package:e_barangay_mo/core/widgets/service_card.dart';
@@ -32,8 +33,50 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
   List<Concern> concerns = [];
   bool isLoading = true;
   String filter = 'All';
+  DateTime? filedOn;
+  final searchController = TextEditingController();
+  String search = '';
   String? loadError;
   Timer? poller;
+
+  /// Kept short on purpose: each card's pill still shows the exact status.
+  static const _statusFilters = {
+    'All': 'All',
+    'Open': 'Open',
+    'Closed': 'Closed',
+  };
+
+  bool get hasFilters => filter != 'All' || filedOn != null || search.isNotEmpty;
+
+  bool _matches(Concern row) {
+    final status = row.data['status'] ?? 'Pending';
+    if (filter == 'Open' && isClosedStatus(status)) return false;
+    if (filter == 'Closed' && !isClosedStatus(status)) return false;
+
+    if (filedOn != null) {
+      final filed = parseDate(row.createdAt);
+      if (filed == null || !DateUtils.isSameDay(filed, filedOn)) return false;
+    }
+
+    if (search.isEmpty) return true;
+    final needle = search.toLowerCase();
+    return [
+      row.data['title'],
+      row.data['type'],
+      row.data['requestType'],
+      referenceFor(row),
+      statusLabel(row.data),
+    ].any((v) => v != null && '$v'.toLowerCase().contains(needle));
+  }
+
+  void clearFilters() {
+    searchController.clear();
+    setState(() {
+      filter = 'All';
+      filedOn = null;
+      search = '';
+    });
+  }
 
   @override
   void initState() {
@@ -46,6 +89,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
   @override
   void dispose() {
     poller?.cancel();
+    searchController.dispose();
     super.dispose();
   }
 
@@ -149,21 +193,40 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                         amount: _overlap,
                         child: _QuickActions(onOpen: openForm),
                       ),
-                      Text("My requests", style: text.titleLarge),
-                      const SizedBox(height: AppSpace.s3),
                       Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         spacing: AppSpace.s2,
                         runSpacing: AppSpace.s2,
                         children: [
-                          for (final f in ['All', ...concernStatuses])
-                            ChoiceChip(
-                              label: Text(f),
-                              selected: filter == f,
-                              showCheckmark: false,
-                              onSelected: (_) => setState(() => filter = f),
-                            ),
+                          Text("My requests", style: text.titleLarge),
+                          Wrap(
+                            spacing: AppSpace.s2,
+                            children: [
+                              FilterMenu(
+                                label: "Status",
+                                value: filter,
+                                options: _statusFilters,
+                                onSelected: (f) => setState(() => filter = f),
+                              ),
+                              DateFilterButton(
+                                value: filedOn,
+                                label: formatDate,
+                                onChanged: (day) =>
+                                    setState(() => filedOn = day),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
+                      if (concerns.isNotEmpty) ...[
+                        const SizedBox(height: AppSpace.s3),
+                        ListSearchField(
+                          controller: searchController,
+                          onChanged: (v) => setState(() => search = v.trim()),
+                          hint: "Search title or ref. no.",
+                        ),
+                      ],
                       const SizedBox(height: AppSpace.s4),
                       ..._requestList(),
                       const SizedBox(height: AppSpace.s8),
@@ -207,11 +270,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
       ];
     }
 
-    final visible = filter == 'All'
-        ? concerns
-        : concerns
-            .where((r) => (r.data['status'] ?? 'Pending') == filter)
-            .toList();
+    final visible = hasFilters ? concerns.where(_matches).toList() : concerns;
 
     if (concerns.isNotEmpty && visible.isEmpty) {
       return [
@@ -221,10 +280,10 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
             children: [
               Icon(PhosphorIconsRegular.tray, size: 40, color: c.inkMuted),
               const SizedBox(height: AppSpace.s3),
-              Text("Nothing marked $filter", style: text.titleMedium),
+              Text("No requests match", style: text.titleMedium),
               const SizedBox(height: AppSpace.s1),
               TextButton(
-                onPressed: () => setState(() => filter = 'All'),
+                onPressed: clearFilters,
                 child: const Text("Show all"),
               ),
             ],

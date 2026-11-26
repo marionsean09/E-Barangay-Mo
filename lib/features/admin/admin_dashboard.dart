@@ -13,6 +13,7 @@ import 'package:e_barangay_mo/core/theme/app_tokens.dart';
 import 'package:e_barangay_mo/core/utils/concern_format.dart';
 import 'package:e_barangay_mo/core/widgets/brand_logo.dart';
 import 'package:e_barangay_mo/core/widgets/hero_panel.dart';
+import 'package:e_barangay_mo/core/widgets/list_controls.dart';
 import 'package:e_barangay_mo/core/widgets/notification_bell.dart';
 import 'package:e_barangay_mo/core/widgets/service_card.dart';
 import 'package:e_barangay_mo/core/widgets/status_pill.dart';
@@ -36,6 +37,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
   String filter = 'All';
   String typeFilter = 'All';
   String sort = 'newest';
+  final searchController = TextEditingController();
+  String search = '';
+  DateTime? filedOn;
+  Timer? _searchDelay;
   Timer? poller;
   int _loadId = 0;
 
@@ -58,8 +63,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void dispose() {
     poller?.cancel();
+    _searchDelay?.cancel();
+    searchController.dispose();
     super.dispose();
   }
+
+  /// Searches all records on the server, waiting until typing pauses.
+  void onSearchChanged(String value) {
+    _searchDelay?.cancel();
+    _searchDelay = Timer(const Duration(milliseconds: 350), () {
+      if (value.trim() != search) updateView(() => search = value.trim());
+    });
+  }
+
+  bool get hasFilters =>
+      filter != 'All' ||
+      typeFilter != 'All' ||
+      search.isNotEmpty ||
+      filedOn != null;
 
   Future<void> loadConcerns() async {
     // Only the latest request may update the list if filters change quickly.
@@ -70,6 +91,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         sort: sort,
         type: typeFilter == 'All' ? null : typeFilter,
         status: filter == 'All' ? null : filter,
+        search: search,
+        date: filedOn,
       );
       if (!mounted || id != _loadId) return;
       setState(() {
@@ -221,14 +244,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             spacing: AppSpace.s2,
                             runSpacing: AppSpace.s2,
                             children: [
-                              _FilterMenu(
+                              FilterMenu(
                                 label: "Type",
                                 value: typeFilter,
                                 options: _typeLabels,
                                 onSelected: (value) =>
                                     updateView(() => typeFilter = value),
                               ),
-                              _FilterMenu(
+                              FilterMenu(
                                 label: "Status",
                                 value: filter,
                                 options: {
@@ -237,6 +260,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                 },
                                 onSelected: (value) =>
                                     updateView(() => filter = value),
+                              ),
+                              DateFilterButton(
+                                value: filedOn,
+                                label: formatDate,
+                                onChanged: (day) =>
+                                    updateView(() => filedOn = day),
                               ),
                               SegmentedButton<String>(
                                 showSelectedIcon: false,
@@ -257,6 +286,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             ],
                           ),
                         ],
+                      ),
+                      const SizedBox(height: AppSpace.s3),
+                      ListSearchField(
+                        controller: searchController,
+                        onChanged: onSearchChanged,
+                        hint: "Search name, email, title or ref. no.",
                       ),
                       const SizedBox(height: AppSpace.s4),
                       ..._list(concerns),
@@ -312,16 +347,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
               Icon(PhosphorIconsRegular.tray, size: 40, color: c.inkMuted),
               const SizedBox(height: AppSpace.s3),
               Text(
-                filter == 'All' && typeFilter == 'All'
+                !hasFilters
                     ? "No concerns yet"
+                    : search.isNotEmpty
+                    ? "No records match \"$search\""
                     : "No records match these filters",
                 style: text.titleMedium,
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppSpace.s1),
               Text(
-                filter == 'All' && typeFilter == 'All'
+                !hasFilters
                     ? "New requests and reports from residents appear here."
-                    : "Try another type or status.",
+                    : search.isNotEmpty
+                    ? "Check the spelling, or search by reference number."
+                    : "Try another type, status or date.",
                 style: text.bodySmall,
               ),
             ],
@@ -335,8 +375,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ServiceCard(
           icon: typeIcon(row.data['type']),
           title: (row.data['requester'] as Map?)?['fullName'] ?? 'Resident',
+          reference: referenceFor(row),
           meta:
-              "${row.data['title'] ?? ''}\nRef. ${referenceFor(row)}, filed ${formatDateTime(parseDate(row.createdAt) ?? DateTime.now())}",
+              "${row.data['title'] ?? ''}\nFiled ${formatDateTime(parseDate(row.createdAt) ?? DateTime.now())}",
           status: row.data['status'] ?? 'Pending',
           statusLabel: statusLabel(row.data),
           note: _note(row.data),
@@ -369,80 +410,6 @@ String? _note(Map<String, dynamic> data) {
   return preferred == null
       ? null
       : "Prefers ${formatLongDate(preferred)}. Needs a claiming date.";
-}
-
-/// A compact dropdown sized and outlined like the Newest/Oldest control.
-class _FilterMenu extends StatelessWidget {
-  const _FilterMenu({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onSelected,
-  });
-
-  final String label;
-  final String value;
-  final Map<String, String> options;
-  final ValueChanged<String> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final text = Theme.of(context).textTheme;
-    final isActive = value != 'All';
-    final color = isActive ? c.primary : c.ink;
-
-    return Material(
-      color: isActive ? c.primarySoft : Colors.transparent,
-      clipBehavior: Clip.antiAlias,
-      shape: StadiumBorder(side: BorderSide(color: c.inkMuted)),
-      child: PopupMenuButton<String>(
-        tooltip: "Filter by ${label.toLowerCase()}",
-        initialValue: value,
-        position: PopupMenuPosition.under,
-        onSelected: (next) {
-          if (next != value) onSelected(next);
-        },
-        itemBuilder: (_) => [
-          for (final entry in options.entries)
-            PopupMenuItem(
-              value: entry.key,
-              child: Text(
-                entry.value,
-                style: text.bodyMedium?.copyWith(
-                  color: entry.key == value ? c.primary : c.ink,
-                  fontWeight: entry.key == value
-                      ? FontWeight.w600
-                      : FontWeight.w400,
-                ),
-              ),
-            ),
-        ],
-        child: Container(
-          height: 40,
-          padding: const EdgeInsets.only(left: AppSpace.s4, right: AppSpace.s3),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                isActive ? options[value]! : label,
-                style: text.labelLarge?.copyWith(color: color),
-              ),
-              const SizedBox(width: AppSpace.s1),
-              RotatedBox(
-                quarterTurns: 1,
-                child: Icon(
-                  PhosphorIconsRegular.caretRight,
-                  size: 14,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _StatCard extends StatelessWidget {
